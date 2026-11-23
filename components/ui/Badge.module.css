@@ -1,0 +1,24 @@
+/* components/ui/Badge.module.css */
+
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: capitalize;
+  line-height: 1.4;
+}
+
+/* Complaint status colours */
+.pending      { background: var(--amber-light); color: var(--amber); }
+.under_review { background: var(--blue-light);  color: #1d4ed8; }
+.resolved     { background: var(--green-light); color: var(--green); }
+.rejected     { background: var(--red-light);   color: var(--red); }
+
+/* Severity colours */
+.low      { background: var(--green-light); color: var(--green); }
+.medium   { background: var(--amber-light); color: var(--amber); }
+.high     { background: #fff0eb;            color: #c2410c; }
+.critical { background: var(--red-light);   color: var(--red); }

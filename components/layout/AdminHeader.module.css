@@ -1,0 +1,68 @@
+/* components/layout/AdminHeader.module.css */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: var(--shadow-sm);
+}
+
+.menuBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--text);
+  line-height: 1;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.menuBtn:hover { background: var(--bg); }
+
+/* Show hamburger only on mobile */
+@media (min-width: 1024px) {
+  .menuBtn { display: none; }
+}
+
+.title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  margin: 0;
+}
+
+.userBadge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.avatar {
+  width: 26px;
+  height: 26px;
+  background: var(--navy);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}

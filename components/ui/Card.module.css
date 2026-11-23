@@ -1,0 +1,35 @@
+/* components/ui/Card.module.css */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.body {
+  padding: 20px;
+}
+
+.footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: #f9fafb;
+}

@@ -1,0 +1,46 @@
+/* app/admin/analytics/analytics.module.css */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.statRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+
+.statRow:last-child {
+  border-bottom: none;
+}
+
+.barTrack {
+  height: 8px;
+  background: var(--bg);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.barFill {
+  height: 100%;
+  background: var(--navy);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.ratingStars {
+  color: #f59e0b;
+  font-weight: 700;
+}

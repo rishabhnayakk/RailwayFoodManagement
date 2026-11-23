@@ -1,0 +1,48 @@
+/* app/admin/audit-logs/auditlogs.module.css */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.logList {
+  display: flex;
+  flex-direction: column;
+}
+
+.logItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.logItem:last-child {
+  border-bottom: none;
+}
+
+.logIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--blue-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.logAction {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.logMeta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}

@@ -1,0 +1,5 @@
+/* components/ui/Skeleton.module.css */
+
+.line  { height: 16px; border-radius: 4px; margin-bottom: 8px; }
+.box   { border-radius: 8px; }
+.circle { border-radius: 50%; }

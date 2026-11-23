@@ -1,69 +1,111 @@
-import Image from "next/image";
+/* app/page.js — Landing page
+ *
+ * WHAT IT DOES:
+ *   The first page visitors see. Shows three entry portals:
+ *   Passenger (scan QR), Admin (dashboard), Inspector.
+ *   No database calls here — it is a pure static page.
+ *
+ * HOW TO EXPLAIN:
+ *   "This is a Server Component — no 'use client' needed.
+ *    It has no interactivity so React renders it once on the server.
+ *    Links go to the three portals."
+ */
 
-export default function Home() {
+import Link from "next/link";
+import styles from "./page.module.css";
+
+export default function LandingPage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.js
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className={styles.page}>
+
+      {/* ── Navbar ── */}
+      <nav className={styles.nav}>
+        <Link href="/" className={styles.navBrand}>
+          <div className={styles.navLogo}>🛡️</div>
+          <div>
+            <div className={styles.navName}>RailGuard</div>
+            <div className={styles.navSub}>Ministry of Railways</div>
+          </div>
+        </Link>
+        <div className={styles.navLinks}>
+          <Link href="/admin" className={styles.navLink}>Admin</Link>
+          <Link href="/inspector" className={styles.navLink}>Inspector</Link>
+          <Link href="/scan" className={styles.navCta}>Scan QR</Link>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </nav>
+
+      {/* ── Hero ── */}
+      <section className={styles.hero}>
+        <div className={styles.heroBadge}>
+          🚂 Official Railway Quality Monitoring System
         </div>
-      </main>
+        <h1 className={styles.heroTitle}>
+          Ensuring Railway Food Safety<br />
+          <span className={styles.heroAccent}>Through Smart Audits</span>
+        </h1>
+        <p className={styles.heroDesc}>
+          Passengers scan QR codes on food packaging to submit real-time feedback.
+          Quality teams investigate complaints and monitor vendor performance.
+        </p>
+        <div className={styles.heroBtns}>
+          <Link href="/scan" className={styles.btnGreen}>
+            📱 Scan QR Code
+          </Link>
+          <Link href="/admin" className={styles.btnWhite}>
+            🛡️ Admin Dashboard
+          </Link>
+        </div>
+      </section>
+
+      {/* ── Portals ── */}
+      <section className={styles.portals}>
+        <h2 className={styles.sectionTitle}>Choose Your Portal</h2>
+        <p className={styles.sectionDesc}>
+          Select your role to access the right tools.
+        </p>
+        <div className={styles.portalGrid}>
+
+          <Link href="/scan" className={styles.portalCard}>
+            <div className={styles.portalIcon}>📱</div>
+            <div className={styles.portalTitle}>Passenger Portal</div>
+            <div className={styles.portalDesc}>
+              Scan the QR code on your food packaging. View food details,
+              rate your experience, report hygiene issues, and upload images.
+              No account needed — feedback is anonymous.
+            </div>
+            <div className={styles.portalLink}>Scan & Submit Feedback →</div>
+          </Link>
+
+          <Link href="/admin" className={styles.portalCard}>
+            <div className={styles.portalIcon}>🛡️</div>
+            <div className={styles.portalTitle}>Admin Dashboard</div>
+            <div className={styles.portalDesc}>
+              Manage vendors, review complaints, generate QR codes, assign
+              inspectors, and monitor railway food quality through a
+              centralized dashboard.
+            </div>
+            <div className={styles.portalLink}>Go to Admin Panel →</div>
+          </Link>
+
+          <Link href="/inspector" className={styles.portalCard}>
+            <div className={styles.portalIcon}>🔍</div>
+            <div className={styles.portalTitle}>Inspector Portal</div>
+            <div className={styles.portalDesc}>
+              View assigned complaint cases, review passenger images,
+              record field inspection findings, and submit resolution
+              remarks.
+            </div>
+            <div className={styles.portalLink}>Access Inspector Portal →</div>
+          </Link>
+
+        </div>
+      </section>
+
+      {/* ── Footer ── */}
+      <footer className={styles.footer}>
+        © 2025 RailGuard – Ministry of Railways, Government of India.
+        Academic project.
+      </footer>
     </div>
   );
 }

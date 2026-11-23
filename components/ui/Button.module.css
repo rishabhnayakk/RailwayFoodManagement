@@ -1,0 +1,70 @@
+/* components/ui/Button.module.css */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 18px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
+  white-space: nowrap;
+  font-family: inherit;
+  line-height: 1;
+}
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Primary — navy background */
+.primary {
+  background: var(--navy);
+  color: #fff;
+  border-color: var(--navy);
+}
+.primary:hover:not(:disabled) { background: var(--navy-mid); border-color: var(--navy-mid); }
+
+/* Outline — bordered, transparent fill */
+.outline {
+  background: transparent;
+  color: var(--navy);
+  border-color: var(--navy);
+}
+.outline:hover:not(:disabled) { background: var(--navy); color: #fff; }
+
+/* Danger — red */
+.danger {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
+}
+.danger:hover:not(:disabled) { background: #a93226; border-color: #a93226; }
+
+/* Ghost — no border, subtle hover */
+.ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: transparent;
+}
+.ghost:hover:not(:disabled) { background: #edf0f4; }
+
+/* Sizes */
+.sm { padding: 5px 12px; font-size: 0.8rem; }
+.lg { padding: 12px 24px; font-size: 1rem; }
+
+/* Full width */
+.full { width: 100%; }
+
+/* Spinner */
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

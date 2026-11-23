@@ -1,0 +1,149 @@
+/* app/admin/dashboard.module.css */
+
+.page { display: flex; flex-direction: column; gap: 24px; }
+
+/* Setup warning banner */
+.setupBanner {
+  background: #fff8e1;
+  border: 1.5px solid #f9a825;
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+.setupBanner h3 { font-size: 0.95rem; font-weight: 600; color: #7a5500; margin-bottom: 8px; }
+.setupBanner p  { font-size: 0.85rem; color: #9a6600; margin-bottom: 4px; line-height: 1.6; }
+.setupBanner code {
+  background: rgba(0,0,0,0.07);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.82rem;
+}
+
+/* Error banner */
+.errorBanner {
+  background: var(--red-light);
+  border: 1.5px solid var(--red);
+  border-radius: 8px;
+  padding: 14px 18px;
+  font-size: 0.875rem;
+  color: var(--red);
+}
+
+/* KPI grid */
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+}
+
+.kpiCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.kpiIcon {
+  font-size: 1.5rem;
+  margin-bottom: 10px;
+}
+
+.kpiValue {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--navy);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.kpiLabel {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Stat bar chart (pure CSS) */
+.barSection { display: flex; flex-direction: column; gap: 12px; }
+
+.barRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.barLabel {
+  font-size: 0.8rem;
+  color: var(--text);
+  min-width: 110px;
+  flex-shrink: 0;
+}
+
+.barTrack {
+  flex: 1;
+  height: 10px;
+  background: var(--bg);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--navy);
+  transition: width 0.4s ease;
+  min-width: 2px;
+}
+
+.barCount {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 28px;
+  text-align: right;
+}
+
+/* Recent complaints table */
+.tableWrap { overflow-x: auto; }
+
+.tableWrap table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.tableWrap thead { background: #f8f9fb; }
+.tableWrap th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.tableWrap td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: middle;
+}
+.tableWrap tbody tr:hover { background: #f8f9fb; }
+.tableWrap tbody tr:last-child td { border-bottom: none; }
+
+.viewAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--navy);
+  text-decoration: none;
+}
+.viewAll:hover { text-decoration: underline; }
+
+/* Skeleton placeholders */
+.skeletonGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+}
