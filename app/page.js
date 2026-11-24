@@ -23,13 +23,7 @@ export default function LandingPage() {
         </Link>
         <div className={styles.navLinks}>
           <Link href="/auth/login" className={styles.navLink}>
-            Passenger Sign In
-          </Link>
-          <Link href="/inspector/login" className={styles.navLink}>
-            Inspector
-          </Link>
-          <Link href="/admin/login" className={styles.navLink}>
-            Admin
+            Sign In
           </Link>
           <Link href="/scan" className={styles.navCta}>
             📱 Scan Food QR
@@ -61,9 +55,9 @@ export default function LandingPage() {
 
       {/* ── Three Dedicated Role Portals ── */}
       <section className={styles.portals}>
-        <h2 className={styles.sectionTitle}>Role-Based Application Portals</h2>
+        <h2 className={styles.sectionTitle}>One Secure Login for Every Role</h2>
         <p className={styles.sectionDesc}>
-          RailGuard separates passenger feedback, field investigations, and administrative quality auditing.
+          Passengers, Railway Admins, Food Inspectors, and Catering Vendors all use the same secure sign-in page. Your account role determines which dashboard opens.
         </p>
         <div className={styles.portalGrid}>
           {/* Passenger Portal */}
@@ -90,8 +84,8 @@ export default function LandingPage() {
             <div className={styles.portalDesc}>
               Designated railway food safety inspectors examine assigned complaints, inspect pantry cars and catering units, record observations, and file official inspection reports.
             </div>
-            <Link href="/inspector/login" className={styles.portalLink}>
-              Inspector Sign In →
+            <Link href="/auth/login" className={styles.portalLink}>
+              Sign In →
             </Link>
           </div>
 
@@ -102,22 +96,10 @@ export default function LandingPage() {
             <div className={styles.portalDesc}>
               Oversee catering contractors, register food packages, generate printable QR codes, assign cases to inspectors, review findings, and monitor quality trends.
             </div>
-            <Link href="/admin/login" className={styles.portalLink}>
-              Admin Sign In →
+            <Link href="/auth/login" className={styles.portalLink}>
+              Sign In →
             </Link>
           </div>
-        </div>
-      </section>
-
-      {/* ── Architecture Note on Vendors ── */}
-      <section style={{ maxWidth: "1100px", margin: "0 auto 60px", padding: "0 32px" }}>
-        <div style={{ background: "#f8fafc", border: "1px solid var(--border)", borderRadius: "12px", padding: "24px" }}>
-          <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "8px", color: "var(--navy)" }}>
-            🏢 Vendor Management Architecture Note
-          </h3>
-          <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", lineHeight: 1.6 }}>
-            Food vendors and catering contractors (e.g. pantry car operators, base kitchens) are supplier entities managed centrally by the Railway Administration. Vendors do not have application user accounts; all vendor licensing, food package registrations, and quality metrics are audited directly by Railway Admins.
-          </p>
         </div>
       </section>
 
