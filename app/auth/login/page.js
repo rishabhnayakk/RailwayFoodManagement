@@ -30,13 +30,18 @@ export default function LoginPage() {
       await signInUser(email, password);
       const userProfile = await getCurrentUserProfile();
 
-      const role = userProfile?.profile?.role || "passenger";
+      const role = userProfile?.profile?.role;
+      if (!role) throw new Error("Your account profile is missing. Please contact the RailGuard administrator.");
       if (role === "admin") {
         router.push("/admin");
       } else if (role === "inspector") {
         router.push("/inspector");
-      } else {
+      } else if (role === "vendor") {
+        router.push("/vendor");
+      } else if (role === "passenger") {
         router.push("/passenger");
+      } else {
+        throw new Error("This account has an unsupported role. Contact the administrator.");
       }
     } catch (err) {
       setError(err.message || "Failed to sign in. Please verify your credentials.");
@@ -60,11 +65,11 @@ export default function LoginPage() {
       <div className={styles.main}>
         <div className={styles.card}>
           <span className={`${styles.badgeHeader} ${styles.badgePassenger}`}>
-            Passenger Portal
+            Unified Access Portal
           </span>
           <h1 className={styles.title}>Sign In to RailGuard</h1>
           <p className={styles.subtitle}>
-            Access your food feedback, track reported complaints, and manage your profile.
+            One secure sign-in for Railway Admin, Food Inspector, Catering Vendor and Passenger accounts.
           </p>
 
           {error && <div className={styles.errorBanner}>{error}</div>}
@@ -73,7 +78,7 @@ export default function LoginPage() {
             <Input
               label="Email Address"
               type="email"
-              placeholder="passenger@example.com"
+              placeholder="you@example.com"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -98,11 +103,7 @@ export default function LoginPage() {
             </Link>
           </p>
 
-          <div className={styles.roleLinks}>
-            <Link href="/admin/login">Admin Login</Link>
-            <span>•</span>
-            <Link href="/inspector/login">Inspector Login</Link>
-          </div>
+          <div className={styles.roleLinks}>Role-based access · Secure account verification</div>
         </div>
       </div>
     </div>
