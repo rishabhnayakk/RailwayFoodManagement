@@ -1,91 +1,201 @@
 /* app/inspector/page.js
- * Quality Inspector Portal
- *
- * Designated railway inspectors log in to review assigned food quality cases,
- * record inspection observations, and submit resolution reports.
- * Clean JSX, no external icon library.
+ * Quality Inspector Overview Dashboard
+ * Displays metrics for cases assigned specifically to this inspector.
  */
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import Button from "@/components/ui/Button";
+import InspectorLayout from "@/components/layout/InspectorLayout";
+import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
+import { StatusBadge, SeverityBadge } from "@/components/ui/Badge";
+import EmptyState from "@/components/ui/EmptyState";
+import { SkeletonCard, SkeletonLine } from "@/components/ui/Skeleton";
+import { formatDate } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { getCurrentUserProfile } from "@/lib/auth";
 import styles from "./inspector.module.css";
 
-export default function InspectorPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+export default function InspectorOverviewPage() {
+  const [cases, setCases] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  function handleLogin(e) {
-    e.preventDefault();
-    alert("Inspector authentication will verify against Supabase Auth in Phase 5.");
-  }
+  useEffect(() => {
+    async function loadInspectorDashboard() {
+      setLoading(true);
+      const authData = await getCurrentUserProfile();
+      if (!authData?.user) {
+        setLoading(false);
+        return;
+      }
+
+      const supabase = createClient();
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("complaints")
+          .select(`
+            id,
+            issue_type,
+            severity,
+            status,
+            created_at,
+            food_packages (
+              package_name,
+              vendors (
+                business_name,
+                station_location
+              )
+            )
+          `)
+          .eq("assigned_inspector_id", authData.user.id)
+          .order("created_at", { ascending: false });
+
+        if (!error && data) {
+          setCases(data);
+        }
+      } catch (err) {
+        console.error("Error loading inspector cases:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadInspectorDashboard();
+  }, []);
+
+  const totalAssigned = cases.length;
+  const pendingCases = cases.filter(
+    (c) => c.status === "assigned" || c.status === "in_progress"
+  ).length;
+  const submittedReports = cases.filter(
+    (c) => c.status === "report_submitted"
+  ).length;
+  const resolvedCases = cases.filter((c) => c.status === "resolved").length;
 
   return (
-    <div className={styles.container}>
-      {/* Top Header */}
-      <div className={styles.topBar}>
-        <Link href="/" className={styles.backLink}>
-          ← Back to Home
-        </Link>
-        <div className={styles.brand}>
-          <span>🔍</span>
-          <span>RailGuard Inspector</span>
+    <InspectorLayout title="Inspector Dashboard">
+      {/* KPI Counters */}
+      {loading ? (
+        <div className={styles.kpiRow}>
+          {[1, 2, 3, 4].map((i) => (
+            <SkeletonCard key={i} />
+          ))}
         </div>
-      </div>
-
-      {/* Login Card */}
-      <div className={styles.body}>
-        <div className={styles.card}>
-          <div className={styles.iconBox}>📋</div>
-          <h1 className={styles.title}>Inspector Portal</h1>
-          <p className={styles.subtitle}>
-            Authorized railway quality officials sign in to examine assigned complaints and record field investigation findings.
-          </p>
-
-          <div className={styles.infoBox}>
-            <div className={styles.infoTitle}>Official Access Only</div>
-            <p className={styles.infoDesc}>
-              Credentials are issued by the Railway Quality Administration. All inspections are cryptographically recorded in the audit logs.
-            </p>
+      ) : (
+        <div className={styles.kpiRow}>
+          <div className={styles.kpiCard}>
+            <div className={styles.kpiIcon}>📋</div>
+            <div className={styles.kpiNumber}>{totalAssigned}</div>
+            <div className={styles.kpiLabel}>Total Cases Assigned</div>
           </div>
-
-          <form onSubmit={handleLogin} className={styles.form}>
-            <div>
-              <label htmlFor="ins-email" className={styles.label}>
-                Official Email
-              </label>
-              <input
-                id="ins-email"
-                type="email"
-                placeholder="inspector@railways.gov.in"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className={styles.input}
-                required
-              />
-            </div>
-            <div>
-              <label htmlFor="ins-password" className={styles.label}>
-                Password
-              </label>
-              <input
-                id="ins-password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={styles.input}
-                required
-              />
-            </div>
-            <Button type="submit" variant="primary" full>
-              Sign In to Assigned Cases →
-            </Button>
-          </form>
+          <div className={styles.kpiCard}>
+            <div className={styles.kpiIcon}>⏳</div>
+            <div className={styles.kpiNumber}>{pendingCases}</div>
+            <div className={styles.kpiLabel}>Pending Investigation</div>
+          </div>
+          <div className={styles.kpiCard}>
+            <div className={styles.kpiIcon}>📝</div>
+            <div className={styles.kpiNumber}>{submittedReports}</div>
+            <div className={styles.kpiLabel}>Reports Submitted</div>
+          </div>
+          <div className={styles.kpiCard}>
+            <div className={styles.kpiIcon}>✅</div>
+            <div className={styles.kpiNumber}>{resolvedCases}</div>
+            <div className={styles.kpiLabel}>Resolved Cases</div>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+
+      {/* Assigned Cases Table */}
+      <Card>
+        <CardHeader>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <CardTitle>Recent Assigned Quality Cases ({cases.length})</CardTitle>
+            <Link
+              href="/inspector/cases"
+              style={{ fontSize: "0.85rem", color: "var(--navy)", fontWeight: 600 }}
+            >
+              View All Cases →
+            </Link>
+          </div>
+        </CardHeader>
+        <CardBody style={{ padding: 0 }}>
+          {loading ? (
+            <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "12px" }}>
+              {[1, 2, 3].map((i) => (
+                <SkeletonLine key={i} height={20} />
+              ))}
+            </div>
+          ) : cases.length === 0 ? (
+            <EmptyState
+              icon="🔍"
+              title="No complaints assigned yet"
+              description="You have zero active investigation assignments. Complaints assigned to you by Railway Administration will appear here."
+            />
+          ) : (
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Case Ref</th>
+                    <th>Food Package</th>
+                    <th>Vendor</th>
+                    <th>Issue Type</th>
+                    <th>Severity</th>
+                    <th>Status</th>
+                    <th>Reported</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cases.slice(0, 5).map((c) => (
+                    <tr key={c.id}>
+                      <td style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+                        {c.id.slice(0, 8)}…
+                      </td>
+                      <td style={{ fontWeight: 600 }}>
+                        {c.food_packages?.package_name || "Food Package"}
+                      </td>
+                      <td style={{ color: "var(--text-muted)" }}>
+                        {c.food_packages?.vendors?.business_name || "—"}
+                      </td>
+                      <td>{c.issue_type?.replace(/_/g, " ")}</td>
+                      <td>
+                        <SeverityBadge severity={c.severity} />
+                      </td>
+                      <td>
+                        <StatusBadge status={c.status} />
+                      </td>
+                      <td style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                        {formatDate(c.created_at)}
+                      </td>
+                      <td>
+                        <Link
+                          href={`/inspector/cases/${c.id}`}
+                          style={{
+                            fontSize: "0.82rem",
+                            fontWeight: 700,
+                            color: "var(--navy)",
+                            textDecoration: "underline",
+                          }}
+                        >
+                          Investigate →
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+    </InspectorLayout>
   );
 }

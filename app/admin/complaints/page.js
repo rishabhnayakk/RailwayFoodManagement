@@ -1,8 +1,8 @@
 /* app/admin/complaints/page.js
  * Complaint Management Portal
  *
- * Displays all passenger food quality complaints.
- * Supports keyword search, status filtering, and severity filtering.
+ * Displays all passenger food quality complaints across railway catering.
+ * Supports keyword search, 7-stage lifecycle status filtering, and severity filtering.
  * Connects to Supabase database. Shows clean empty state if no complaints exist.
  * NO fake data. NO external icon libraries.
  */
@@ -10,6 +10,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import AdminLayout from "@/components/layout/AdminLayout";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
 import { StatusBadge, SeverityBadge } from "@/components/ui/Badge";
@@ -48,8 +49,12 @@ export default function ComplaintsPage() {
             food_packages (
               package_name,
               vendors (
-                business_name
+                business_name,
+                station_location
               )
+            ),
+            profiles!complaints_assigned_inspector_id_fkey (
+              full_name
             )
           `)
           .order("created_at", { ascending: false });
@@ -72,6 +77,7 @@ export default function ComplaintsPage() {
     const pkgName = c.food_packages?.package_name?.toLowerCase() || "";
     const vendorName = c.food_packages?.vendors?.business_name?.toLowerCase() || "";
     const issue = c.issue_type?.toLowerCase() || "";
+    const inspectorName = c.profiles?.full_name?.toLowerCase() || "";
     const term = search.toLowerCase();
 
     const matchesSearch =
@@ -79,6 +85,7 @@ export default function ComplaintsPage() {
       pkgName.includes(term) ||
       vendorName.includes(term) ||
       issue.includes(term) ||
+      inspectorName.includes(term) ||
       c.id.includes(term);
 
     const matchesStatus = statusFilter === "all" || c.status === statusFilter;
@@ -94,7 +101,7 @@ export default function ComplaintsPage() {
         <div className={styles.filtersRow}>
           <input
             type="text"
-            placeholder="Search by package, vendor, issue, or ID..."
+            placeholder="Search by package, vendor, inspector, issue, or ID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className={styles.searchInput}
@@ -104,11 +111,14 @@ export default function ComplaintsPage() {
             onChange={(e) => setStatusFilter(e.target.value)}
             className={styles.select}
           >
-            <option value="all">All Statuses</option>
-            <option value="pending">Pending</option>
-            <option value="under_review">Under Review</option>
-            <option value="resolved">Resolved</option>
-            <option value="rejected">Rejected</option>
+            <option value="all">All Statuses (Lifecycle)</option>
+            <option value="submitted">1. Submitted</option>
+            <option value="pending_review">2. Pending Review</option>
+            <option value="assigned">3. Assigned to Inspector</option>
+            <option value="in_progress">4. In Progress</option>
+            <option value="report_submitted">5. Report Submitted</option>
+            <option value="resolved">6. Resolved / Closed</option>
+            <option value="reopened">Reopened</option>
           </select>
           <select
             value={severityFilter}
@@ -152,13 +162,14 @@ export default function ComplaintsPage() {
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th>Complaint ID</th>
+                      <th>Complaint Ref</th>
                       <th>Food Package</th>
-                      <th>Vendor</th>
+                      <th>Vendor & Station</th>
                       <th>Issue Type</th>
+                      <th>Assigned Inspector</th>
                       <th>Status</th>
                       <th>Severity</th>
-                      <th>Reported Date</th>
+                      <th>Date</th>
                       <th>Action</th>
                     </tr>
                   </thead>
@@ -171,8 +182,24 @@ export default function ComplaintsPage() {
                         </td>
                         <td style={{ color: "var(--text-muted)" }}>
                           {c.food_packages?.vendors?.business_name ?? "—"}
+                          {c.food_packages?.vendors?.station_location && (
+                            <span style={{ fontSize: "0.75rem", display: "block" }}>
+                              📍 {c.food_packages.vendors.station_location}
+                            </span>
+                          )}
                         </td>
                         <td>{c.issue_type?.replace(/_/g, " ")}</td>
+                        <td>
+                          {c.profiles?.full_name ? (
+                            <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--navy)" }}>
+                              🔍 {c.profiles.full_name}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: "0.78rem", color: "#d97706", fontStyle: "italic" }}>
+                              Unassigned
+                            </span>
+                          )}
+                        </td>
                         <td>
                           <StatusBadge status={c.status} />
                         </td>
@@ -183,12 +210,22 @@ export default function ComplaintsPage() {
                           {formatDate(c.created_at)}
                         </td>
                         <td>
-                          <button
-                            className={styles.actionBtn}
-                            onClick={() => alert(`Reviewing details for case ${c.id}`)}
+                          <Link
+                            href={`/admin/complaints/${c.id}`}
+                            style={{
+                              display: "inline-block",
+                              padding: "6px 12px",
+                              background: "var(--navy)",
+                              color: "#fff",
+                              borderRadius: "6px",
+                              fontSize: "0.78rem",
+                              fontWeight: 600,
+                              textDecoration: "none",
+                              whiteSpace: "nowrap",
+                            }}
                           >
-                            Investigate →
-                          </button>
+                            Review & Assign →
+                          </Link>
                         </td>
                       </tr>
                     ))}

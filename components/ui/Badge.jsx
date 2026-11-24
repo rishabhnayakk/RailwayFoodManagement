@@ -1,23 +1,31 @@
 /* components/ui/Badge.jsx
- *
- * Small coloured pill labels for status and severity.
- *
- * JAVASCRIPT CONCEPT: Computed property names
- *   styles[status] looks up the CSS class by the value of `status`.
- *   If status = "pending", it uses styles.pending.
+ * Small coloured status, severity, and role indicator pills.
  */
 
 import styles from "./Badge.module.css";
-import { STATUS_LABELS, SEVERITY_LABELS } from "@/lib/constants";
+import { STATUS_LABELS, SEVERITY_LABELS, ROLE_LABELS } from "@/lib/constants";
 
 export function StatusBadge({ status }) {
-  const label = STATUS_LABELS[status] ?? status ?? "—";
-  const cls   = styles[status] ?? "";
+  const normalized = status ? status.toLowerCase() : "submitted";
+  const label = STATUS_LABELS[normalized] ?? status ?? "—";
+  const cls = styles[normalized] ?? "";
   return <span className={`${styles.badge} ${cls}`}>{label}</span>;
 }
 
 export function SeverityBadge({ severity }) {
-  const label = SEVERITY_LABELS[severity] ?? severity ?? "—";
-  const cls   = styles[severity] ?? "";
+  const normalized = severity ? severity.toLowerCase() : "medium";
+  const label = SEVERITY_LABELS[normalized] ?? severity ?? "—";
+  const cls = styles[normalized] ?? "";
+  return <span className={`${styles.badge} ${cls}`}>{label}</span>;
+}
+
+export function RoleBadge({ role }) {
+  const label = ROLE_LABELS[role] ?? role ?? "User";
+  const cls =
+    role === "admin"
+      ? styles.roleAdmin
+      : role === "inspector"
+      ? styles.roleInspector
+      : styles.rolePassenger;
   return <span className={`${styles.badge} ${cls}`}>{label}</span>;
 }
