@@ -46,7 +46,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      await registerPassenger({
+      const data = await registerPassenger({
         email,
         password,
         fullName,
@@ -54,9 +54,7 @@ export default function RegisterPage() {
       });
 
       setSuccess(true);
-      setTimeout(() => {
-        router.push("/passenger");
-      }, 1500);
+      if (data?.session) router.push("/passenger");
     } catch (err) {
       setError(err.message || "Registration failed. Please try again.");
     } finally {
@@ -89,7 +87,7 @@ export default function RegisterPage() {
           {error && <div className={styles.errorBanner}>{error}</div>}
           {success && (
             <div className={styles.successBanner}>
-              Account created successfully! Redirecting to your dashboard...
+              Account created. If email confirmation is enabled, check your inbox and verify your email before signing in.
             </div>
           )}
 
