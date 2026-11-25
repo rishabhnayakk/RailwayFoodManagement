@@ -8,7 +8,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import InspectorLayout from "@/components/layout/InspectorLayout";
-import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
+import { Card, CardBody } from "@/components/ui/Card";
 import { StatusBadge, SeverityBadge } from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
 import { SkeletonLine } from "@/components/ui/Skeleton";
@@ -25,7 +25,7 @@ export default function InspectorCasesPage() {
   useEffect(() => {
     async function loadCases() {
       setLoading(true);
-      const authData = await getCurrentUserProfile();
+      const authData = await getCurrentUserProfile().catch(() => null);
       if (!authData?.user) {
         setLoading(false);
         return;
@@ -94,7 +94,10 @@ export default function InspectorCasesPage() {
           <option value="assigned">Newly Assigned</option>
           <option value="in_progress">Investigation In Progress</option>
           <option value="report_submitted">Report Submitted</option>
-          <option value="resolved">Resolved / Closed</option>
+          <option value="unable_to_resolve">Unable to Resolve</option>
+          <option value="escalated">Escalated</option>
+          <option value="reopened">Reopened</option>
+          <option value="resolved">Resolved</option>
         </select>
       </div>
 

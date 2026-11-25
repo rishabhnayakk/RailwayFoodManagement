@@ -1,7 +1,4 @@
-/* app/passenger/page.js
- * Passenger Dashboard Main Overview
- * Summarizes passenger's submitted feedback, active complaints, and quick scan action.
- */
+/* app/passenger/page.js — Passenger Portal Overview */
 
 "use client";
 
@@ -9,9 +6,10 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import PassengerLayout from "@/components/layout/PassengerLayout";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
-import { StatusBadge, SeverityBadge } from "@/components/ui/Badge";
+import { StatusBadge } from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
-import { SkeletonCard, SkeletonLine } from "@/components/ui/Skeleton";
+import NavIcon from "@/components/ui/NavIcon";
+import { SkeletonLine } from "@/components/ui/Skeleton";
 import { formatDate } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentUserProfile } from "@/lib/auth";
@@ -26,7 +24,7 @@ export default function PassengerDashboardPage() {
   useEffect(() => {
     async function loadPassengerData() {
       setLoading(true);
-      const authData = await getCurrentUserProfile();
+      const authData = await getCurrentUserProfile().catch(() => null);
       if (!authData?.user) {
         setLoading(false);
         return;
@@ -85,117 +83,120 @@ export default function PassengerDashboardPage() {
   }, []);
 
   const totalComplaints = complaints.length;
-  const activeComplaints = complaints.filter(
-    (c) => c.status !== "resolved"
-  ).length;
-  const resolvedComplaints = complaints.filter(
-    (c) => c.status === "resolved"
-  ).length;
-  const totalFeedback = feedback.length;
+  const activeComplaints = complaints.filter((c) => c.status !== "resolved").length;
+  const resolvedComplaints = complaints.filter((c) => c.status === "resolved").length;
 
   return (
     <PassengerLayout>
-      {/* Welcome Banner */}
-      <div className={styles.welcomeCard}>
+      <div className={styles.headerStrip}>
         <div>
           <h1 className={styles.welcomeTitle}>
-            Welcome, {profile?.full_name || "Passenger"} 👋
+            {profile?.full_name || "Passenger Account"}
           </h1>
           <p className={styles.welcomeDesc}>
-            Indian Railways Food Quality & Hygiene Monitoring System
+            Scan railway meal QR codes, review food quality, and track your complaint status.
           </p>
         </div>
         <Link href="/scan" className={styles.scanCta}>
-          📱 Scan Food QR Code
+          <NavIcon name="qr" size={15} />
+          <span>Scan Food QR</span>
         </Link>
       </div>
 
-      {/* KPI Counters */}
-      {loading ? (
-        <div className={styles.kpiRow}>
-          {[1, 2, 3, 4].map((i) => (
-            <SkeletonCard key={i} />
-          ))}
-        </div>
-      ) : (
-        <div className={styles.kpiRow}>
-          <div className={styles.kpiCard}>
-            <div className={styles.kpiIcon}>⚠️</div>
-            <div className={styles.kpiNumber}>{totalComplaints}</div>
-            <div className={styles.kpiLabel}>Total Complaints</div>
-          </div>
-          <div className={styles.kpiCard}>
-            <div className={styles.kpiIcon}>⏳</div>
-            <div className={styles.kpiNumber}>{activeComplaints}</div>
-            <div className={styles.kpiLabel}>Under Investigation</div>
-          </div>
-          <div className={styles.kpiCard}>
-            <div className={styles.kpiIcon}>✅</div>
-            <div className={styles.kpiNumber}>{resolvedComplaints}</div>
-            <div className={styles.kpiLabel}>Resolved Complaints</div>
-          </div>
-          <div className={styles.kpiCard}>
-            <div className={styles.kpiIcon}>⭐</div>
-            <div className={styles.kpiNumber}>{totalFeedback}</div>
-            <div className={styles.kpiLabel}>Ratings Submitted</div>
-          </div>
-        </div>
-      )}
+      <div className={styles.summaryLine}>
+        <span>Complaints Filed: <strong>{totalComplaints}</strong></span>
+        <span>Open / Active: <strong>{activeComplaints}</strong></span>
+        <span>Resolved: <strong>{resolvedComplaints}</strong></span>
+        <span>Ratings Submitted: <strong>{feedback.length}</strong></span>
+      </div>
 
-      {/* Recent Complaints Table */}
-      <Card style={{ marginBottom: "24px" }}>
+      <Card style={{ marginBottom: "20px" }}>
         <CardHeader>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <CardTitle>Recent Food Complaints</CardTitle>
-            <Link
-              href="/passenger/complaints"
-              style={{ fontSize: "0.85rem", color: "var(--navy)", fontWeight: 600 }}
-            >
-              View Full Tracker →
-            </Link>
-          </div>
+          <CardTitle>Recent Complaints</CardTitle>
+          <Link
+            href="/passenger/complaints"
+            style={{ fontSize: "0.82rem", color: "var(--navy)", fontWeight: 600 }}
+          >
+            Full status tracker →
+          </Link>
         </CardHeader>
         <CardBody style={{ padding: 0 }}>
           {loading ? (
-            <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "10px" }}>
-              {[1, 2].map((i) => (
-                <SkeletonLine key={i} height={18} />
-              ))}
+            <div style={{ padding: "18px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              {[1, 2].map((i) => <SkeletonLine key={i} height={18} />)}
             </div>
           ) : complaints.length === 0 ? (
             <EmptyState
-              icon="📭"
-              title="No complaints filed yet"
-              description="If you encounter poor food quality, foreign objects, or packaging defects, scan the package QR code to lodge an official complaint."
+              title="No complaints filed"
+              description="Scan a meal package QR code if you need to report a food quality or hygiene issue."
             />
           ) : (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
                 <thead>
-                  <tr style={{ background: "#f8fafc", textAlign: "left" }}>
-                    <th style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>Package</th>
-                    <th style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>Vendor</th>
-                    <th style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>Issue</th>
-                    <th style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>Status</th>
-                    <th style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>Reported</th>
+                  <tr style={{ background: "#f9fafb", textAlign: "left" }}>
+                    <th style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Package</th>
+                    <th style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Vendor</th>
+                    <th style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Issue</th>
+                    <th style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Status</th>
+                    <th style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Filed</th>
                   </tr>
                 </thead>
                 <tbody>
                   {complaints.slice(0, 5).map((c) => (
                     <tr key={c.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                      <td style={{ padding: "12px 16px", fontWeight: 600 }}>
-                        {c.food_packages?.package_name || "Food Package"}
-                      </td>
-                      <td style={{ padding: "12px 16px", color: "var(--text-muted)" }}>
-                        {c.food_packages?.vendors?.business_name || "—"}
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>{c.issue_type?.replace(/_/g, " ")}</td>
-                      <td style={{ padding: "12px 16px" }}>
-                        <StatusBadge status={c.status} />
-                      </td>
-                      <td style={{ padding: "12px 16px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                        {formatDate(c.created_at)}
-                      </td>
+                      <td style={{ padding: "10px 14px", fontWeight: 600 }}>{c.food_packages?.package_name || "Food Package"}</td>
+                      <td style={{ padding: "10px 14px", color: "var(--text-muted)" }}>{c.food_packages?.vendors?.business_name || "—"}</td>
+                      <td style={{ padding: "10px 14px" }}>{c.issue_type?.replace(/_/g, " ")}</td>
+                      <td style={{ padding: "10px 14px" }}><StatusBadge status={c.status} /></td>
+                      <td style={{ padding: "10px 14px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{formatDate(c.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Food Ratings</CardTitle>
+          <Link
+            href="/passenger/feedback"
+            style={{ fontSize: "0.82rem", color: "var(--navy)", fontWeight: 600 }}
+          >
+            All ratings →
+          </Link>
+        </CardHeader>
+        <CardBody style={{ padding: 0 }}>
+          {loading ? (
+            <div style={{ padding: "18px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              {[1, 2].map((i) => <SkeletonLine key={i} height={18} />)}
+            </div>
+          ) : feedback.length === 0 ? (
+            <EmptyState
+              title="No ratings submitted"
+              description="Ratings you submit after scanning meal QR codes will be listed here."
+            />
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+                <thead>
+                  <tr style={{ background: "#f9fafb", textAlign: "left" }}>
+                    <th style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Package</th>
+                    <th style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Rating</th>
+                    <th style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Comment</th>
+                    <th style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {feedback.slice(0, 5).map((f) => (
+                    <tr key={f.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "10px 14px", fontWeight: 600 }}>{f.food_packages?.package_name || "Food Package"}</td>
+                      <td style={{ padding: "10px 14px", fontWeight: 600, color: "#b45309" }}>{f.rating} / 5</td>
+                      <td style={{ padding: "10px 14px", color: "var(--text-muted)" }}>{f.comment || "—"}</td>
+                      <td style={{ padding: "10px 14px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{formatDate(f.created_at)}</td>
                     </tr>
                   ))}
                 </tbody>

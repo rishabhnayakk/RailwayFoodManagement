@@ -1,6 +1,5 @@
 /* app/passenger/complaints/page.js
  * Passenger Complaints History & Visual Lifecycle Tracker
- * Displays the 6-stage investigation progress for every complaint submitted by the passenger.
  */
 
 "use client";
@@ -18,9 +17,8 @@ import styles from "../passenger.module.css";
 
 const STAGES = [
   { key: "submitted", label: "Submitted" },
-  { key: "pending_review", label: "Review" },
   { key: "assigned", label: "Assigned" },
-  { key: "in_progress", label: "Investigating" },
+  { key: "in_progress", label: "In Progress" },
   { key: "report_submitted", label: "Report Filed" },
   { key: "resolved", label: "Resolved" },
 ];
@@ -28,14 +26,14 @@ const STAGES = [
 function getStageIndex(status) {
   const map = {
     submitted: 0,
-    pending: 1,
-    pending_review: 1,
-    under_review: 1,
-    assigned: 2,
-    in_progress: 3,
-    report_submitted: 4,
-    resolved: 5,
+    pending_review: 0,
+    assigned: 1,
     reopened: 1,
+    in_progress: 2,
+    report_submitted: 3,
+    unable_to_resolve: 3,
+    escalated: 3,
+    resolved: 4,
   };
   return map[status] ?? 0;
 }
@@ -48,7 +46,7 @@ export default function PassengerComplaintsPage() {
   useEffect(() => {
     async function loadComplaints() {
       setLoading(true);
-      const authData = await getCurrentUserProfile();
+      const authData = await getCurrentUserProfile().catch(() => null);
       if (!authData?.user) {
         setLoading(false);
         return;
@@ -72,12 +70,6 @@ export default function PassengerComplaintsPage() {
                 business_name,
                 station_location
               )
-            ),
-            inspection_reports (
-              id,
-              findings,
-              remarks,
-              created_at
             ),
             complaint_status_history (
               id,
@@ -105,10 +97,10 @@ export default function PassengerComplaintsPage() {
 
   return (
     <PassengerLayout>
-      <div style={{ marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
         <div>
           <h1 style={{ fontSize: "1.35rem", fontWeight: 700, color: "var(--text)" }}>
-            My Quality Complaints & Investigation Status
+            My Quality Complaints & Status Tracker
           </h1>
           <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
             Real-time tracking of food defect reports submitted through RailGuard
@@ -126,7 +118,7 @@ export default function PassengerComplaintsPage() {
             textDecoration: "none",
           }}
         >
-          + File New Complaint
+          + Scan QR & File Complaint
         </Link>
       </div>
 
@@ -140,7 +132,7 @@ export default function PassengerComplaintsPage() {
         <EmptyState
           icon="⚠️"
           title="No complaints filed yet"
-          description="You have not submitted any food quality or hygiene complaints. All complaints filed after scanning QR codes will display here."
+          description="Complaints submitted while signed into your passenger account will appear here with real-time investigation updates."
           action={
             <Link
               href="/scan"
@@ -163,10 +155,12 @@ export default function PassengerComplaintsPage() {
           {complaints.map((c) => {
             const currentStageIdx = getStageIndex(c.status);
             const isExpanded = expandedId === c.id;
+            const sortedHistory = [...(c.complaint_status_history || [])].sort(
+              (a, b) => new Date(a.created_at) - new Date(b.created_at)
+            );
 
             return (
               <div key={c.id} className={styles.complaintItem}>
-                {/* Header Row */}
                 <div className={styles.complaintHead}>
                   <div>
                     <h2 className={styles.pkgName}>
@@ -182,7 +176,6 @@ export default function PassengerComplaintsPage() {
                   </div>
                 </div>
 
-                {/* 6-Stage Progress Stepper */}
                 <div className={styles.stepper}>
                   {STAGES.map((stg, idx) => {
                     const isCompleted = idx < currentStageIdx;
@@ -204,7 +197,6 @@ export default function PassengerComplaintsPage() {
                   })}
                 </div>
 
-                {/* Complaint Summary */}
                 <div style={{ background: "#f8fafc", padding: "14px", borderRadius: "8px", fontSize: "0.85rem" }}>
                   <div style={{ marginBottom: "6px" }}>
                     <strong>Issue Category:</strong> {c.issue_type?.replace(/_/g, " ")}
@@ -212,6 +204,13 @@ export default function PassengerComplaintsPage() {
                   <div style={{ marginBottom: "6px" }}>
                     <strong>Description:</strong> {c.description}
                   </div>
+                  {(c.train_number || c.pnr_number || c.coach_seat) && (
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                      {c.train_number && <span>Train: <strong>{c.train_number}</strong> · </span>}
+                      {c.pnr_number && <span>PNR: <strong>{c.pnr_number}</strong> · </span>}
+                      {c.coach_seat && <span>Coach/Seat: <strong>{c.coach_seat}</strong></span>}
+                    </div>
+                  )}
                   {c.image_url && (
                     <div style={{ marginTop: "10px" }}>
                       <strong style={{ display: "block", marginBottom: "4px" }}>Evidence Photo:</strong>
@@ -224,10 +223,9 @@ export default function PassengerComplaintsPage() {
                   )}
                 </div>
 
-                {/* Optional Journey & Reference Details */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.8rem", color: "var(--text-muted)", flexWrap: "wrap", gap: "8px" }}>
                   <span>
-                    Ref: <code style={{ fontFamily: "monospace" }}>{c.id.slice(0, 8)}…</code> • Reported on {formatDate(c.created_at)}
+                    Ref: <code style={{ fontFamily: "monospace" }}>{c.id}</code> • Reported on {formatDate(c.created_at)}
                   </span>
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : c.id)}
@@ -239,49 +237,28 @@ export default function PassengerComplaintsPage() {
                       cursor: "pointer",
                     }}
                   >
-                    {isExpanded ? "Hide Investigation Trail ▲" : "View Investigation Trail ▼"}
+                    {isExpanded ? "Hide Status History ▲" : "View Status History ▼"}
                   </button>
                 </div>
 
-                {/* Expanded Action History & Inspector Findings */}
                 {isExpanded && (
-                  <div style={{ borderTop: "1px solid var(--border)", paddingTop: "14px", marginTop: "4px" }}>
-                    {/* Inspector Report if available */}
-                    {c.inspection_reports && c.inspection_reports.length > 0 && (
-                      <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "12px", borderRadius: "8px", marginBottom: "12px" }}>
-                        <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "#166534", marginBottom: "4px" }}>
-                          🔍 Official Quality Inspector Findings:
+                  <div style={{ borderTop: "1px solid var(--border)", paddingTop: "14px", marginTop: "4px", fontSize: "0.82rem" }}>
+                    <div style={{ fontWeight: 700, marginBottom: "8px" }}>Status Audit Trail:</div>
+                    {sortedHistory.length > 0 ? (
+                      sortedHistory.map((hist) => (
+                        <div key={hist.id} style={{ display: "flex", gap: "10px", marginBottom: "6px", flexWrap: "wrap" }}>
+                          <span style={{ color: "var(--text-muted)", minWidth: "140px" }}>
+                            {formatDateTime(hist.created_at)}:
+                          </span>
+                          <span>
+                            <strong>{hist.new_status?.replace(/_/g, " ")}</strong>
+                            {hist.remarks && ` — ${hist.remarks}`}
+                          </span>
                         </div>
-                        <p style={{ fontSize: "0.82rem", color: "#15803d", marginBottom: "4px" }}>
-                          {c.inspection_reports[0].findings}
-                        </p>
-                        {c.inspection_reports[0].remarks && (
-                          <p style={{ fontSize: "0.78rem", color: "#166534" }}>
-                            Remarks: {c.inspection_reports[0].remarks}
-                          </p>
-                        )}
-                      </div>
+                      ))
+                    ) : (
+                      <p style={{ color: "var(--text-muted)" }}>Complaint registered in system.</p>
                     )}
-
-                    {/* Status History Timeline */}
-                    <div style={{ fontSize: "0.82rem" }}>
-                      <div style={{ fontWeight: 700, marginBottom: "8px" }}>Status History:</div>
-                      {c.complaint_status_history && c.complaint_status_history.length > 0 ? (
-                        c.complaint_status_history.map((hist) => (
-                          <div key={hist.id} style={{ display: "flex", gap: "10px", marginBottom: "6px" }}>
-                            <span style={{ color: "var(--text-muted)", minWidth: "120px" }}>
-                              {formatDateTime(hist.created_at)}:
-                            </span>
-                            <span>
-                              Status changed to <strong>{hist.new_status}</strong>
-                              {hist.remarks && ` — ${hist.remarks}`}
-                            </span>
-                          </div>
-                        ))
-                      ) : (
-                        <p style={{ color: "var(--text-muted)" }}>Complaint registered in system.</p>
-                      )}
-                    </div>
                   </div>
                 )}
               </div>

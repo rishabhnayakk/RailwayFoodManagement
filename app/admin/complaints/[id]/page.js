@@ -1,13 +1,5 @@
 /* app/admin/complaints/[id]/page.js
  * Administrator Complaint Review & Case Management File
- *
- * Full administrative control for railway quality officers:
- * - View passenger complaint, photo evidence, journey info, and package details
- * - Assign or reassign cases to field Quality Inspectors
- * - Review official inspection reports submitted by inspectors
- * - Close/Resolve complaints with official closure remarks
- * - Reopen complaints for re-audit if needed
- * - View full audit timeline
  */
 
 "use client";
@@ -16,10 +8,10 @@ import { useState, useEffect, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AdminLayout from "@/components/layout/AdminLayout";
-import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
 import { StatusBadge, SeverityBadge } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
+import { useToast } from "@/components/ui/Toast";
 import { SkeletonCard, SkeletonLine } from "@/components/ui/Skeleton";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -30,16 +22,16 @@ export default function AdminComplaintDetailPage({ params }) {
   const resolvedParams = use(params);
   const complaintId = resolvedParams?.id;
   const router = useRouter();
+  const toast = useToast();
 
   const [adminUser, setAdminUser] = useState(null);
   const [complaint, setComplaint] = useState(null);
   const [inspectors, setInspectors] = useState([]);
   const [selectedInspectorId, setSelectedInspectorId] = useState("");
-  const [report, setReport] = useState(null);
+  const [reports, setReports] = useState([]);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Modals
   const [resolveModalOpen, setResolveModalOpen] = useState(false);
   const [resolveRemarks, setResolveRemarks] = useState("");
   const [reopenModalOpen, setReopenModalOpen] = useState(false);
@@ -48,7 +40,7 @@ export default function AdminComplaintDetailPage({ params }) {
 
   async function loadData() {
     setLoading(true);
-    const authData = await getCurrentUserProfile();
+    const authData = await getCurrentUserProfile().catch(() => null);
     if (!authData?.user) {
       router.push("/admin/login");
       return;
@@ -62,7 +54,6 @@ export default function AdminComplaintDetailPage({ params }) {
     }
 
     try {
-      // 1. Fetch Complaint Details
       const { data: compData, error: compErr } = await supabase
         .from("complaints")
         .select(`
@@ -99,49 +90,38 @@ export default function AdminComplaintDetailPage({ params }) {
       setComplaint(compData);
       setSelectedInspectorId(compData.assigned_inspector_id || "");
 
-      // 2. Fetch all registered Inspectors for assignment dropdown
-      const { data: inspData } = await supabase
-        .from("profiles")
-        .select("id, full_name, email, phone")
-        .eq("role", "inspector")
-        .order("full_name", { ascending: true });
+      const [inspRes, repRes, histRes] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id, full_name, email, phone, status")
+          .eq("role", "inspector")
+          .eq("status", "active")
+          .order("full_name", { ascending: true }),
+        supabase
+          .from("inspection_reports")
+          .select(`
+            *,
+            profiles!inspection_reports_inspector_id_fkey (
+              full_name,
+              email,
+              phone
+            )
+          `)
+          .eq("complaint_id", complaintId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("complaint_status_history")
+          .select("*")
+          .eq("complaint_id", complaintId)
+          .order("created_at", { ascending: false }),
+      ]);
 
-      if (inspData) {
-        setInspectors(inspData);
-      }
-
-      // 3. Fetch latest inspection report
-      const { data: repData } = await supabase
-        .from("inspection_reports")
-        .select(`
-          *,
-          profiles!inspection_reports_inspector_id_fkey (
-            full_name,
-            email,
-            phone
-          )
-        `)
-        .eq("complaint_id", complaintId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (repData) {
-        setReport(repData);
-      }
-
-      // 4. Fetch status audit trail
-      const { data: histData } = await supabase
-        .from("complaint_status_history")
-        .select("*")
-        .eq("complaint_id", complaintId)
-        .order("created_at", { ascending: false });
-
-      if (histData) {
-        setHistory(histData);
-      }
+      if (inspRes.data) setInspectors(inspRes.data);
+      if (repRes.data) setReports(repRes.data);
+      if (histRes.data) setHistory(histRes.data);
     } catch (err) {
       console.error("Error loading complaint details:", err);
+      toast.error("Failed to load complaint details.");
     } finally {
       setLoading(false);
     }
@@ -156,10 +136,9 @@ export default function AdminComplaintDetailPage({ params }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [complaintId]);
 
-  // Action: Assign Inspector
   async function handleAssignInspector() {
     if (!selectedInspectorId) {
-      alert("Please select a Quality Inspector to assign this case.");
+      toast.error("Please select a Quality Inspector to assign this case.");
       return;
     }
 
@@ -171,58 +150,62 @@ export default function AdminComplaintDetailPage({ params }) {
       const assignedInspector = inspectors.find((i) => i.id === selectedInspectorId);
       const inspectorName = assignedInspector?.full_name || "Quality Inspector";
 
-      // If status is submitted or pending_review, advance to 'assigned'
-      const newStatus =
-        complaint.status === "submitted" || complaint.status === "pending_review"
-          ? "assigned"
-          : complaint.status;
+      const transitionable = ["submitted", "pending_review", "reopened", "unable_to_resolve", "escalated"];
+      const newStatus = transitionable.includes(complaint.status) ? "assigned" : complaint.status;
+      const now = new Date().toISOString();
 
       const { error: updateErr } = await supabase
         .from("complaints")
         .update({
           assigned_inspector_id: selectedInspectorId,
           status: newStatus,
-          updated_at: new Date().toISOString(),
+          updated_at: now,
         })
         .eq("id", complaint.id);
 
       if (updateErr) throw updateErr;
 
-      // Status history entry
-      await supabase.from("complaint_status_history").insert([
-        {
-          complaint_id: complaint.id,
-          changed_by: adminUser?.user?.id || null,
-          old_status: complaint.status,
-          new_status: newStatus,
-          remarks: `Assigned to Quality Inspector ${inspectorName} by Railway Administration.`,
-        },
-      ]);
-
-      // System audit log
-      await supabase.from("audit_logs").insert([
-        {
-          user_id: adminUser?.user?.id || null,
-          action: "ASSIGN_INSPECTOR",
-          target_entity: "complaint",
-          details: {
+      await Promise.all([
+        supabase.from("complaint_assignments").insert([
+          {
             complaint_id: complaint.id,
             inspector_id: selectedInspectorId,
-            inspector_name: inspectorName,
+            assigned_by: adminUser?.user?.id || null,
+            remarks: `Assigned to Inspector ${inspectorName}.`,
           },
-        },
+        ]),
+        supabase.from("complaint_status_history").insert([
+          {
+            complaint_id: complaint.id,
+            changed_by: adminUser?.user?.id || null,
+            old_status: complaint.status,
+            new_status: newStatus,
+            remarks: `Assigned to Quality Inspector ${inspectorName} by Railway Administration.`,
+          },
+        ]),
+        supabase.from("audit_logs").insert([
+          {
+            user_id: adminUser?.user?.id || null,
+            action: "ASSIGN_INSPECTOR",
+            target_entity: "complaint",
+            details: {
+              complaint_id: complaint.id,
+              inspector_id: selectedInspectorId,
+              inspector_name: inspectorName,
+            },
+          },
+        ]),
       ]);
 
-      alert(`Case successfully assigned to Officer ${inspectorName}.`);
+      toast.success(`Case successfully assigned to Officer ${inspectorName}.`);
       await loadData();
     } catch (err) {
-      alert("Error assigning inspector: " + err.message);
+      toast.error("Error assigning inspector: " + err.message);
     } finally {
       setActionLoading(false);
     }
   }
 
-  // Action: Close / Resolve Complaint
   async function handleResolveComplaint(e) {
     e.preventDefault();
     setActionLoading(true);
@@ -243,42 +226,40 @@ export default function AdminComplaintDetailPage({ params }) {
 
       if (updateErr) throw updateErr;
 
-      // Status history entry
-      await supabase.from("complaint_status_history").insert([
-        {
-          complaint_id: complaint.id,
-          changed_by: adminUser?.user?.id || null,
-          old_status: complaint.status,
-          new_status: "resolved",
-          remarks: `Complaint closed: ${remarksText}`,
-        },
-      ]);
-
-      // Audit log
-      await supabase.from("audit_logs").insert([
-        {
-          user_id: adminUser?.user?.id || null,
-          action: "RESOLVE_COMPLAINT",
-          target_entity: "complaint",
-          details: {
+      await Promise.all([
+        supabase.from("complaint_status_history").insert([
+          {
             complaint_id: complaint.id,
-            resolution_remarks: remarksText,
+            changed_by: adminUser?.user?.id || null,
+            old_status: complaint.status,
+            new_status: "resolved",
+            remarks: `Verified & Resolved by Admin: ${remarksText}`,
           },
-        },
+        ]),
+        supabase.from("audit_logs").insert([
+          {
+            user_id: adminUser?.user?.id || null,
+            action: "RESOLVE_COMPLAINT",
+            target_entity: "complaint",
+            details: {
+              complaint_id: complaint.id,
+              resolution_remarks: remarksText,
+            },
+          },
+        ]),
       ]);
 
       setResolveModalOpen(false);
       setResolveRemarks("");
-      alert("Complaint marked as Resolved and Closed.");
+      toast.success("Complaint verified and marked as Resolved.");
       await loadData();
     } catch (err) {
-      alert("Failed to resolve complaint: " + err.message);
+      toast.error("Failed to resolve complaint: " + err.message);
     } finally {
       setActionLoading(false);
     }
   }
 
-  // Action: Reopen Complaint
   async function handleReopenComplaint(e) {
     e.preventDefault();
     setActionLoading(true);
@@ -287,7 +268,7 @@ export default function AdminComplaintDetailPage({ params }) {
 
     try {
       const remarksText =
-        reopenRemarks.trim() || "Complaint reopened for further inquiry.";
+        reopenRemarks.trim() || "Complaint reopened for further investigation.";
 
       const { error: updateErr } = await supabase
         .from("complaints")
@@ -299,36 +280,35 @@ export default function AdminComplaintDetailPage({ params }) {
 
       if (updateErr) throw updateErr;
 
-      // Status history entry
-      await supabase.from("complaint_status_history").insert([
-        {
-          complaint_id: complaint.id,
-          changed_by: adminUser?.user?.id || null,
-          old_status: complaint.status,
-          new_status: "reopened",
-          remarks: `Case reopened by Admin: ${remarksText}`,
-        },
-      ]);
-
-      // Audit log
-      await supabase.from("audit_logs").insert([
-        {
-          user_id: adminUser?.user?.id || null,
-          action: "REOPEN_COMPLAINT",
-          target_entity: "complaint",
-          details: {
+      await Promise.all([
+        supabase.from("complaint_status_history").insert([
+          {
             complaint_id: complaint.id,
-            reopen_remarks: remarksText,
+            changed_by: adminUser?.user?.id || null,
+            old_status: complaint.status,
+            new_status: "reopened",
+            remarks: `Reopened by Admin: ${remarksText}`,
           },
-        },
+        ]),
+        supabase.from("audit_logs").insert([
+          {
+            user_id: adminUser?.user?.id || null,
+            action: "REOPEN_COMPLAINT",
+            target_entity: "complaint",
+            details: {
+              complaint_id: complaint.id,
+              reopen_remarks: remarksText,
+            },
+          },
+        ]),
       ]);
 
       setReopenModalOpen(false);
       setReopenRemarks("");
-      alert("Complaint has been Reopened for inquiry.");
+      toast.warning("Complaint reopened for re-audit.");
       await loadData();
     } catch (err) {
-      alert("Failed to reopen complaint: " + err.message);
+      toast.error("Failed to reopen complaint: " + err.message);
     } finally {
       setActionLoading(false);
     }
@@ -369,69 +349,58 @@ export default function AdminComplaintDetailPage({ params }) {
         />
       ) : (
         <div>
-          {/* Header Bar */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
             <Link
               href="/admin/complaints"
-              style={{
-                color: "var(--navy)",
-                textDecoration: "none",
-                fontSize: "0.85rem",
-                fontWeight: 600,
-              }}
+              style={{ color: "var(--navy)", textDecoration: "none", fontSize: "0.85rem", fontWeight: 600 }}
             >
               ← Back to Complaints List
             </Link>
 
-            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
               <SeverityBadge severity={complaint.severity} />
               <StatusBadge status={complaint.status} />
 
-              {/* Action Buttons */}
-              {complaint.status !== "resolved" ? (
+              {complaint.status !== "resolved" && (
                 <Button
                   variant="primary"
                   onClick={() => setResolveModalOpen(true)}
                   style={{ background: "#16a34a", borderColor: "#16a34a" }}
                 >
-                  ✓ Close / Resolve Case
+                  ✓ Confirm Resolved
                 </Button>
-              ) : (
+              )}
+
+              {complaint.status !== "reopened" && (
                 <Button
                   variant="outline"
                   onClick={() => setReopenModalOpen(true)}
                   style={{ color: "#d97706", borderColor: "#d97706" }}
                 >
-                  ↺ Reopen Case
+                  ↺ Reopen Complaint
                 </Button>
               )}
             </div>
           </div>
 
-          {/* 2-Column Main Grid */}
           <div className={styles.detailGrid}>
-            {/* Left Column: Complaint Details, Journey Info, Photo */}
             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-              {/* Card 1: Passenger Complaint */}
               <div className={styles.detailCard}>
-                <h3 className={styles.sectionTitle}>📋 Complaint Overview</h3>
-
+                <h3 className={styles.sectionTitle}>Complaint Overview</h3>
                 <div className={styles.infoRow}>
                   <span className={styles.infoLabel}>Defect / Hygiene Issue</span>
                   <strong style={{ fontSize: "1rem", color: "#dc2626" }}>
                     {complaint.issue_type?.replace(/_/g, " ").toUpperCase()}
                   </strong>
                 </div>
-
                 <div className={styles.infoRow}>
-                  <span className={styles.infoLabel}>Passenger Written Description</span>
+                  <span className={styles.infoLabel}>Passenger Description</span>
                   <p style={{ background: "#f8fafc", padding: "12px", borderRadius: "8px", border: "1px solid var(--border)", margin: "4px 0", lineHeight: 1.5 }}>
                     {complaint.description}
                   </p>
                 </div>
-
                 <div className={styles.infoRow}>
-                  <span className={styles.infoLabel}>Journey & Train Coordinates</span>
+                  <span className={styles.infoLabel}>Journey & Contact Details</span>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "4px" }}>
                     <div>Train: <strong>{complaint.train_number || "Unspecified"}</strong></div>
                     <div>PNR: <strong>{complaint.pnr_number || "Unspecified"}</strong></div>
@@ -439,23 +408,21 @@ export default function AdminComplaintDetailPage({ params }) {
                     <div>Contact: <strong>{complaint.passenger_contact || "Not provided"}</strong></div>
                   </div>
                 </div>
-
                 <div className={styles.infoRow}>
-                  <span className={styles.infoLabel}>Passenger Account Details</span>
+                  <span className={styles.infoLabel}>Passenger Reporter</span>
                   <span>
-                    {complaint.profiles?.full_name || "Registered Passenger"} ({complaint.profiles?.email || "Email on file"})
+                    {complaint.passenger_name || complaint.profiles?.full_name || "Anonymous Passenger"}
+                    {complaint.profiles?.email ? ` (${complaint.profiles.email})` : ""}
                   </span>
                 </div>
-
                 <div className={styles.infoRow}>
                   <span className={styles.infoLabel}>Submission Timestamp</span>
                   <span>{formatDateTime(complaint.created_at)}</span>
                 </div>
               </div>
 
-              {/* Card 2: Passenger Photographic Evidence */}
               <div className={styles.detailCard}>
-                <h3 className={styles.sectionTitle}>📸 Passenger Photo Evidence</h3>
+                <h3 className={styles.sectionTitle}>Passenger Photo Evidence</h3>
                 {complaint.image_url ? (
                   <div>
                     <img
@@ -464,11 +431,7 @@ export default function AdminComplaintDetailPage({ params }) {
                       className={styles.evidenceImage}
                       onClick={() => window.open(complaint.image_url, "_blank")}
                       style={{ cursor: "pointer" }}
-                      title="Click to view full image in new tab"
                     />
-                    <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "6px" }}>
-                      🔍 Click photograph to open full resolution image in new tab.
-                    </p>
                   </div>
                 ) : (
                   <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", fontStyle: "italic" }}>
@@ -477,71 +440,46 @@ export default function AdminComplaintDetailPage({ params }) {
                 )}
               </div>
 
-              {/* Card 3: Food Package & Catering Vendor Context */}
               <div className={styles.detailCard}>
-                <h3 className={styles.sectionTitle}>🏪 Food Package & Licensed Vendor</h3>
-
+                <h3 className={styles.sectionTitle}>Food Package &amp; Licensed Vendor</h3>
                 <div className={styles.infoRow}>
                   <span className={styles.infoLabel}>Package Name</span>
                   <strong>{complaint.food_packages?.package_name || "Unknown Package"}</strong>
                 </div>
-
                 <div className={styles.infoRow}>
                   <span className={styles.infoLabel}>Catering Contractor / Vendor</span>
                   <strong style={{ color: "var(--navy)" }}>
                     {complaint.food_packages?.vendors?.business_name || "Unassigned Vendor"}
                   </strong>
                 </div>
-
                 <div className={styles.infoRow}>
                   <span className={styles.infoLabel}>Station Location / Base</span>
                   <span>{complaint.food_packages?.vendors?.station_location || "—"}</span>
                 </div>
-
                 <div className={styles.infoRow}>
                   <span className={styles.infoLabel}>FSSAI / Railway License Number</span>
                   <span style={{ fontFamily: "monospace" }}>
                     {complaint.food_packages?.vendors?.license_number || "—"}
                   </span>
                 </div>
-
-                {complaint.food_packages?.vendors?.phone && (
-                  <div className={styles.infoRow}>
-                    <span className={styles.infoLabel}>Vendor Phone</span>
-                    <span>{complaint.food_packages?.vendors?.phone}</span>
-                  </div>
-                )}
               </div>
             </div>
 
-            {/* Right Column: Inspector Assignment, Inspection Report, Audit Trail */}
             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-              {/* Card 4: Inspector Assignment */}
               <div className={styles.detailCard}>
-                <h3 className={styles.sectionTitle}>🔍 Quality Inspector Assignment</h3>
-
+                <h3 className={styles.sectionTitle}>Quality Inspector Assignment</h3>
                 <div className={styles.infoRow}>
                   <span className={styles.infoLabel}>Current Assigned Officer</span>
                   {assignedInspectorName ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
-                      <span style={{ fontSize: "1.1rem" }}>👤</span>
-                      <div>
-                        <strong>{assignedInspectorName}</strong>
-                        <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                          Assigned for on-site quality investigation
-                        </div>
-                      </div>
-                    </div>
+                    <strong>{assignedInspectorName}</strong>
                   ) : (
-                    <span style={{ color: "#d97706", fontWeight: 600, marginTop: "4px" }}>
-                      ⚠️ Not Assigned Yet
-                    </span>
+                    <span style={{ color: "#b45309", fontWeight: 600 }}>Not assigned</span>
                   )}
                 </div>
 
                 <div className={styles.assignBox}>
                   <label className={styles.infoLabel}>
-                    {assignedInspectorName ? "Reassign to Inspector" : "Assign to Inspector"}
+                    {assignedInspectorName ? "Reassign to Active Inspector" : "Assign to Active Inspector"}
                   </label>
                   <select
                     value={selectedInspectorId}
@@ -567,52 +505,80 @@ export default function AdminComplaintDetailPage({ params }) {
                 </div>
               </div>
 
-              {/* Card 5: Official Inspection Report (if submitted) */}
               <div className={styles.detailCard}>
-                <h3 className={styles.sectionTitle}>📝 Official Inspection Report</h3>
+                <h3 className={styles.sectionTitle}>Official Inspection Reports ({reports.length})</h3>
+                {reports.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                    {reports.map((report) => (
+                      <div key={report.id} className={styles.reportBox}>
+                        <div className={styles.reportHeader}>
+                          <span className={styles.reportTitle}>
+                            Report by {report.profiles?.full_name || "Quality Officer"}
+                          </span>
+                          <span style={{ fontSize: "0.75rem", color: "#166534" }}>
+                            {report.investigation_date ? formatDate(report.investigation_date) : formatDateTime(report.created_at)}
+                          </span>
+                        </div>
 
-                {report ? (
-                  <div className={styles.reportBox}>
-                    <div className={styles.reportHeader}>
-                      <span className={styles.reportTitle}>
-                        ✅ Inspection Findings Submitted
-                      </span>
-                      <span style={{ fontSize: "0.75rem", color: "#166534" }}>
-                        {formatDateTime(report.created_at)}
-                      </span>
-                    </div>
+                        {report.problem_identified && (
+                          <div className={styles.infoRow}>
+                            <span className={styles.infoLabel}>Problem Identified</span>
+                            <p className={styles.reportFindings}>{report.problem_identified}</p>
+                          </div>
+                        )}
 
-                    <div className={styles.infoRow}>
-                      <span className={styles.infoLabel}>Reporting Quality Inspector</span>
-                      <strong style={{ color: "#166534" }}>
-                        {report.profiles?.full_name || "Quality Officer"}
-                      </strong>
-                    </div>
+                        <div className={styles.infoRow}>
+                          <span className={styles.infoLabel}>Investigation Findings</span>
+                          <p className={styles.reportFindings}>{report.findings}</p>
+                        </div>
 
-                    <div className={styles.infoRow}>
-                      <span className={styles.infoLabel}>Findings & Hygiene Observations</span>
-                      <p className={styles.reportFindings}>{report.findings}</p>
-                    </div>
+                        {report.action_taken && (
+                          <div className={styles.infoRow}>
+                            <span className={styles.infoLabel}>Action Taken</span>
+                            <p className={styles.reportFindings}>{report.action_taken}</p>
+                          </div>
+                        )}
 
-                    {report.remarks && (
-                      <div className={styles.infoRow}>
-                        <span className={styles.infoLabel}>Penalties / Recommended Action</span>
-                        <p className={styles.reportFindings}>{report.remarks}</p>
+                        {report.resolution_description && (
+                          <div className={styles.infoRow}>
+                            <span className={styles.infoLabel}>Resolution Description</span>
+                            <p className={styles.reportFindings}>{report.resolution_description}</p>
+                          </div>
+                        )}
+
+                        {report.recommended_status && (
+                          <div className={styles.infoRow}>
+                            <span className={styles.infoLabel}>Inspector Recommended Outcome</span>
+                            <StatusBadge status={report.recommended_status} />
+                          </div>
+                        )}
+
+                        {report.remarks && (
+                          <div className={styles.infoRow}>
+                            <span className={styles.infoLabel}>Additional Remarks</span>
+                            <p className={styles.reportFindings}>{report.remarks}</p>
+                          </div>
+                        )}
+
+                        {(Array.isArray(report.evidence_images) && report.evidence_images.length > 0
+                          ? report.evidence_images
+                          : report.evidence_image_url
+                          ? [report.evidence_image_url]
+                          : []
+                        ).map((url, idx) => (
+                          <div key={idx} className={styles.infoRow}>
+                            <span className={styles.infoLabel}>Evidence Photo {idx + 1}</span>
+                            <img
+                              src={url}
+                              alt={`Inspector Evidence ${idx + 1}`}
+                              className={styles.evidenceImage}
+                              onClick={() => window.open(url, "_blank")}
+                              style={{ cursor: "pointer", marginTop: "6px" }}
+                            />
+                          </div>
+                        ))}
                       </div>
-                    )}
-
-                    {report.evidence_image_url && (
-                      <div className={styles.infoRow}>
-                        <span className={styles.infoLabel}>Inspector Evidence Photo</span>
-                        <img
-                          src={report.evidence_image_url}
-                          alt="Inspector Audit Evidence"
-                          className={styles.evidenceImage}
-                          onClick={() => window.open(report.evidence_image_url, "_blank")}
-                          style={{ cursor: "pointer", marginTop: "8px" }}
-                        />
-                      </div>
-                    )}
+                    ))}
                   </div>
                 ) : (
                   <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", fontStyle: "italic" }}>
@@ -621,10 +587,8 @@ export default function AdminComplaintDetailPage({ params }) {
                 )}
               </div>
 
-              {/* Card 6: Complete Audit History & Status Timeline */}
               <div className={styles.detailCard}>
-                <h3 className={styles.sectionTitle}>⏱️ Status Audit Trail</h3>
-
+                <h3 className={styles.sectionTitle}>Status Audit Trail</h3>
                 {history.length === 0 ? (
                   <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                     No timeline records logged yet.
@@ -637,15 +601,14 @@ export default function AdminComplaintDetailPage({ params }) {
                         <div className={styles.timelineContent}>
                           <div className={styles.timelineTop}>
                             <span className={styles.timelineStatus}>
+                              {h.old_status ? `${h.old_status.replace(/_/g, " ")} → ` : ""}
                               {h.new_status?.replace(/_/g, " ")}
                             </span>
                             <span className={styles.timelineDate}>
                               {formatDateTime(h.created_at)}
                             </span>
                           </div>
-                          {h.remarks && (
-                            <p className={styles.timelineRemarks}>{h.remarks}</p>
-                          )}
+                          {h.remarks && <p className={styles.timelineRemarks}>{h.remarks}</p>}
                         </div>
                       </div>
                     ))}
@@ -655,33 +618,28 @@ export default function AdminComplaintDetailPage({ params }) {
             </div>
           </div>
 
-          {/* Modal: Close / Resolve Case */}
           {resolveModalOpen && (
             <div className={styles.modalOverlay} onClick={() => setResolveModalOpen(false)}>
               <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-                <h3 className={styles.modalTitle}>Resolve and Close Complaint</h3>
+                <h3 className={styles.modalTitle}>Verify & Resolve Complaint</h3>
                 <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                  Closing this case marks the complaint as investigated, with remedial actions or vendor penalties applied.
+                  Confirm that the inspector&apos;s investigation and corrective action resolved the reported issue.
                 </p>
                 <form onSubmit={handleResolveComplaint}>
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                     <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>
-                      Administrative Resolution Remarks & Penalties *
+                      Administrative Verification & Closure Remarks *
                     </label>
                     <textarea
                       required
                       value={resolveRemarks}
                       onChange={(e) => setResolveRemarks(e.target.value)}
-                      placeholder="e.g. Inspector findings verified. ₹5,000 fine imposed on vendor. Pantry storage sanitized. Passenger notified."
+                      placeholder="e.g. Inspector findings verified. Vendor penalized and pantry sanitized."
                       className={styles.modalTextarea}
                     />
                   </div>
                   <div className={styles.modalActions}>
-                    <Button
-                      variant="ghost"
-                      onClick={() => setResolveModalOpen(false)}
-                      disabled={actionLoading}
-                    >
+                    <Button variant="ghost" onClick={() => setResolveModalOpen(false)} disabled={actionLoading}>
                       Cancel
                     </Button>
                     <Button
@@ -690,7 +648,7 @@ export default function AdminComplaintDetailPage({ params }) {
                       loading={actionLoading}
                       style={{ background: "#16a34a", borderColor: "#16a34a" }}
                     >
-                      Confirm Resolution & Close
+                      Confirm Resolution
                     </Button>
                   </div>
                 </form>
@@ -698,13 +656,12 @@ export default function AdminComplaintDetailPage({ params }) {
             </div>
           )}
 
-          {/* Modal: Reopen Case */}
           {reopenModalOpen && (
             <div className={styles.modalOverlay} onClick={() => setReopenModalOpen(false)}>
               <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
                 <h3 className={styles.modalTitle}>Reopen Quality Complaint</h3>
                 <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                  Reopening this case will transition status back to active investigation for re-audit.
+                  Reopen this complaint if the issue was not satisfactorily resolved or needs further inspection.
                 </p>
                 <form onSubmit={handleReopenComplaint}>
                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -715,16 +672,12 @@ export default function AdminComplaintDetailPage({ params }) {
                       required
                       value={reopenRemarks}
                       onChange={(e) => setReopenRemarks(e.target.value)}
-                      placeholder="e.g. Passenger submitted additional evidence. Re-inspection ordered."
+                      placeholder="e.g. Issue not adequately addressed; re-inspection ordered."
                       className={styles.modalTextarea}
                     />
                   </div>
                   <div className={styles.modalActions}>
-                    <Button
-                      variant="ghost"
-                      onClick={() => setReopenModalOpen(false)}
-                      disabled={actionLoading}
-                    >
+                    <Button variant="ghost" onClick={() => setReopenModalOpen(false)} disabled={actionLoading}>
                       Cancel
                     </Button>
                     <Button

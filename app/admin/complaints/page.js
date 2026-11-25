@@ -117,7 +117,9 @@ export default function ComplaintsPage() {
             <option value="assigned">3. Assigned to Inspector</option>
             <option value="in_progress">4. In Progress</option>
             <option value="report_submitted">5. Report Submitted</option>
-            <option value="resolved">6. Resolved / Closed</option>
+            <option value="unable_to_resolve">Unable to Resolve</option>
+            <option value="escalated">Escalated</option>
+            <option value="resolved">6. Resolved</option>
             <option value="reopened">Reopened</option>
           </select>
           <select
@@ -184,7 +186,7 @@ export default function ComplaintsPage() {
                           {c.food_packages?.vendors?.business_name ?? "—"}
                           {c.food_packages?.vendors?.station_location && (
                             <span style={{ fontSize: "0.75rem", display: "block" }}>
-                              📍 {c.food_packages.vendors.station_location}
+                              {c.food_packages.vendors.station_location}
                             </span>
                           )}
                         </td>
@@ -192,7 +194,7 @@ export default function ComplaintsPage() {
                         <td>
                           {c.profiles?.full_name ? (
                             <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--navy)" }}>
-                              🔍 {c.profiles.full_name}
+                              {c.profiles.full_name}
                             </span>
                           ) : (
                             <span style={{ fontSize: "0.78rem", color: "#d97706", fontStyle: "italic" }}>

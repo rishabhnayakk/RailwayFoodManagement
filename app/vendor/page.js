@@ -1,11 +1,4 @@
-/* app/vendor/page.js
- * Vendor (Catering Partner) Dashboard
- *
- * Displays real-time statistics and operational data for the logged-in vendor.
- * Uses VendorLayout for consistent shell navigation.
- * Data is fetched from Supabase and scoped strictly to the authenticated vendor.
- * No hardcoded or mock data.
- */
+/* app/vendor/page.js — Vendor Catalog & QR Operations Dashboard */
 
 "use client";
 
@@ -13,37 +6,34 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import VendorLayout from "@/components/layout/VendorLayout";
+import { ApprovalBadge, SeverityBadge, StatusBadge } from "@/components/ui/Badge";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentUserProfile } from "@/lib/auth";
+import { formatDate } from "@/lib/utils";
 import styles from "./vendor.module.css";
 
 export default function VendorDashboard() {
   const router = useRouter();
 
-  const [vendor,   setVendor]   = useState(null);
+  const [vendor, setVendor] = useState(null);
   const [packages, setPackages] = useState([]);
   const [feedback, setFeedback] = useState([]);
   const [complaints, setComplaints] = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     async function loadDashboard() {
       try {
         const account = await getCurrentUserProfile();
-        if (!account?.profile) {
-          router.replace("/auth/login");
-          return;
-        }
-        if (account.profile.role !== "vendor") {
-          router.replace("/auth/login");
+        if (!account?.profile || account.profile.role !== "vendor") {
+          router.replace("/vendor/login");
           return;
         }
 
         const supabase = createClient();
         if (!supabase) throw new Error("Supabase is not configured. Contact admin.");
 
-        // 1. Fetch vendor record linked to this user
         const { data: vendorData, error: vErr } = await supabase
           .from("vendors")
           .select("*")
@@ -51,16 +41,13 @@ export default function VendorDashboard() {
           .single();
 
         if (vErr || !vendorData) {
-          throw new Error(
-            "No vendor profile is linked to your account. Please contact the Admin."
-          );
+          throw new Error("No vendor profile is linked to your account. Please contact the Admin.");
         }
         setVendor(vendorData);
 
-        // 2. Fetch this vendor's food packages
         const { data: pkgData, error: pkgErr } = await supabase
           .from("food_packages")
-          .select("id, package_name, category, price, status, created_at")
+          .select("id, package_name, category, price, status, approval_status, created_at, qr_codes(id, qr_token, is_active)")
           .eq("vendor_id", vendorData.id)
           .order("created_at", { ascending: false });
 
@@ -69,8 +56,6 @@ export default function VendorDashboard() {
         setPackages(pkgs);
 
         const pkgIds = pkgs.map((p) => p.id);
-
-        // 3. Fetch feedback for this vendor's packages + non-PII complaints via API
         if (pkgIds.length > 0) {
           const [fbRes, cmpRes] = await Promise.all([
             supabase
@@ -78,7 +63,7 @@ export default function VendorDashboard() {
               .select("id, package_id, rating, comment, created_at")
               .in("package_id", pkgIds)
               .order("created_at", { ascending: false })
-              .limit(10),
+              .limit(6),
             fetch("/api/vendor/complaints").then((r) => (r.ok ? r.json() : { complaints: [] })),
           ]);
 
@@ -95,219 +80,186 @@ export default function VendorDashboard() {
     loadDashboard();
   }, [router]);
 
-  // Computed stats
-  const activePkgs   = packages.filter((p) => p.status === "active").length;
-  const avgRating    = feedback.length
+  const approvedPkgs = packages.filter((p) => p.approval_status === "approved").length;
+  const pendingPkgs = packages.filter((p) => (p.approval_status || "pending") === "pending").length;
+  const avgRating = feedback.length
     ? (feedback.reduce((sum, f) => sum + (f.rating || 0), 0) / feedback.length).toFixed(1)
     : null;
-  const openComplaints = complaints.filter(
-    (c) => c.status !== "resolved"
-  ).length;
+  const openComplaints = complaints.filter((c) => c.status !== "resolved").length;
 
-  // ── SEVERITY BADGE ─────────────────────────────────────────────────────
-  function SeverityBadge({ severity }) {
-    const map = {
-      low:      { bg: "#dcfce7", color: "#166534", label: "Low"      },
-      medium:   { bg: "#fef9c3", color: "#854d0e", label: "Medium"   },
-      high:     { bg: "#fee2e2", color: "#991b1b", label: "High"     },
-      critical: { bg: "#fce7f3", color: "#9d174d", label: "Critical" },
-    };
-    const s = map[severity] || { bg: "#f1f5f9", color: "#475569", label: severity || "—" };
-    return (
-      <span style={{
-        background: s.bg, color: s.color,
-        padding: "2px 8px", borderRadius: "999px",
-        fontSize: "0.72rem", fontWeight: 700,
-      }}>
-        {s.label}
-      </span>
-    );
-  }
-
-  function StatusBadge({ status }) {
-    const map = {
-      pending_review:    { bg: "#fef9c3", color: "#854d0e" },
-      assigned:          { bg: "#dbeafe", color: "#1d4ed8" },
-      in_progress:       { bg: "#ede9fe", color: "#6d28d9" },
-      report_submitted:  { bg: "#e0f2fe", color: "#0369a1" },
-      resolved:          { bg: "#dcfce7", color: "#166534" },
-      reopened:          { bg: "#fee2e2", color: "#991b1b" },
-    };
-    const s = map[status] || { bg: "#f1f5f9", color: "#475569" };
-    const label = status?.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || "—";
-    return (
-      <span style={{
-        background: s.bg, color: s.color,
-        padding: "2px 8px", borderRadius: "999px",
-        fontSize: "0.72rem", fontWeight: 700,
-      }}>
-        {label}
-      </span>
-    );
-  }
-
-  // ── RENDER ──────────────────────────────────────────────────────────────
   return (
-    <VendorLayout title="Dashboard">
+    <VendorLayout title="Vendor Workspace">
       {loading ? (
-        <div className={styles.loading}>Loading your dashboard…</div>
+        <div className={styles.loading}>Loading vendor workspace…</div>
       ) : error ? (
         <div className={styles.errorBox} role="alert">
-          <strong>⚠️ {error}</strong>
+          <strong>{error}</strong>
         </div>
       ) : (
         <div className={styles.page}>
+          {vendor.status === "suspended" && (
+            <div className={styles.errorBox} role="alert">
+              <strong>Account Suspended:</strong> Your catering account is suspended by Railway Administration. Package uploads and public QR scanning are disabled until reactivated.
+            </div>
+          )}
 
-          {/* ── Vendor Identity Card ── */}
+          {/* Vendor Header Strip */}
           <section className={styles.identityCard}>
-            <div className={styles.identityIcon}>🏪</div>
             <div className={styles.identityInfo}>
               <h2 className={styles.bizName}>{vendor.business_name}</h2>
               <p className={styles.bizMeta}>
-                📍 {vendor.station_location || "Station not set"}
-                &nbsp;·&nbsp;
-                🪪 Licence: {vendor.license_number || "—"}
-                &nbsp;·&nbsp;
+                Station: {vendor.station_location || "Not set"} · Licence: {vendor.license_number || "—"} · Status:{" "}
                 <span
                   className={styles.statusDot}
-                  style={{ color: vendor.status === "active" ? "#166534" : "#991b1b" }}
+                  style={{ color: vendor.status === "active" ? "#15803d" : "#b91c1c" }}
                 >
-                  ● {vendor.status === "active" ? "Active" : "Inactive"}
+                  {vendor.status === "active" ? "Active" : "Suspended"}
                 </span>
               </p>
-              {vendor.contact_name && (
-                <p className={styles.bizMeta}>👤 {vendor.contact_name}</p>
-              )}
             </div>
+            <Link
+              href="/vendor/packages"
+              style={{
+                background: "var(--navy)",
+                color: "#fff",
+                padding: "8px 14px",
+                borderRadius: "6px",
+                fontSize: "0.84rem",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              }}
+            >
+              + Upload Food Package
+            </Link>
           </section>
 
-          {/* ── KPI Cards ── */}
-          <div className={styles.kpiGrid}>
+          {/* Compact Summary Strip */}
+          <section className={styles.summaryStrip}>
             {[
-              { icon: "📦", label: "Total Packages",  value: packages.length    },
-              { icon: "✅", label: "Active Packages",  value: activePkgs         },
-              { icon: "💬", label: "Total Reviews",    value: feedback.length    },
-              { icon: "⭐", label: "Average Rating",   value: avgRating ?? "—"  },
-              { icon: "⚠️", label: "Open Complaints",  value: openComplaints     },
-            ].map(({ icon, label, value }) => (
-              <div key={label} className={styles.kpiCard}>
-                <div className={styles.kpiIcon}>{icon}</div>
-                <div>
-                  <div className={styles.kpiValue}>{value}</div>
-                  <div className={styles.kpiLabel}>{label}</div>
-                </div>
+              { label: "Total Packages", value: packages.length },
+              { label: "Approved", value: approvedPkgs },
+              { label: "Pending Approval", value: pendingPkgs },
+              { label: "Reviews", value: feedback.length },
+              { label: "Avg Rating", value: avgRating ? `${avgRating} / 5` : "—" },
+              { label: "Open Complaints", value: openComplaints },
+            ].map(({ label, value }) => (
+              <div key={label} className={styles.summaryCell}>
+                <div className={styles.kpiValue}>{value}</div>
+                <div className={styles.kpiLabel}>{label}</div>
               </div>
             ))}
-          </div>
+          </section>
 
-          {/* ── Recent Food Packages ── */}
+          {/* Primary Table: Food Packages & QR Status */}
           <section className={styles.section}>
             <div className={styles.sectionHead}>
-              <h3 className={styles.sectionTitle}>📦 Recent Food Packages</h3>
-              <Link href="/vendor/packages" className={styles.viewAll}>View all →</Link>
+              <h3 className={styles.sectionTitle}>Uploaded Food Packages &amp; QR Status</h3>
+              <Link href="/vendor/packages" className={styles.viewAll}>Manage packages &amp; QR →</Link>
             </div>
             {packages.length === 0 ? (
               <p className={styles.empty}>
-                No food packages assigned yet. Contact RailGuard Admin to add packages.
+                No food packages uploaded yet.{" "}
+                <Link href="/vendor/packages" style={{ color: "var(--navy)", fontWeight: 600, textDecoration: "underline" }}>
+                  Upload your first package and generate a QR code
+                </Link>
               </p>
             ) : (
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th>Package Name</th>
+                      <th>Food Package</th>
                       <th>Category</th>
                       <th>Price</th>
-                      <th>Status</th>
+                      <th>Approval</th>
+                      <th>QR Code</th>
                       <th>Added</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {packages.slice(0, 5).map((pkg) => (
-                      <tr key={pkg.id}>
-                        <td className={styles.bold}>{pkg.package_name}</td>
-                        <td>{pkg.category || "—"}</td>
-                        <td>{pkg.price != null ? `₹${pkg.price}` : "—"}</td>
-                        <td>
-                          <span className={
-                            pkg.status === "active" ? styles.badgeGreen : styles.badgeRed
-                          }>
-                            {pkg.status}
-                          </span>
-                        </td>
-                        <td>{new Date(pkg.created_at).toLocaleDateString("en-IN")}</td>
-                      </tr>
-                    ))}
+                    {packages.slice(0, 6).map((pkg) => {
+                      const qr = Array.isArray(pkg.qr_codes) ? pkg.qr_codes[0] : pkg.qr_codes;
+                      return (
+                        <tr key={pkg.id}>
+                          <td className={styles.bold}>{pkg.package_name}</td>
+                          <td>{pkg.category || "—"}</td>
+                          <td>{pkg.price != null ? `₹${pkg.price}` : "—"}</td>
+                          <td><ApprovalBadge status={pkg.approval_status || "pending"} /></td>
+                          <td>
+                            {qr?.qr_token ? (
+                              <span style={{ fontSize: "0.78rem", color: "#15803d", fontWeight: 600 }}>Generated</span>
+                            ) : (
+                              <span style={{ fontSize: "0.78rem", color: "#b45309" }}>Pending</span>
+                            )}
+                          </td>
+                          <td>{formatDate(pkg.created_at)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             )}
           </section>
 
-          {/* ── Recent Feedback ── */}
-          <section className={styles.section}>
-            <div className={styles.sectionHead}>
-              <h3 className={styles.sectionTitle}>⭐ Recent Passenger Feedback</h3>
-              <Link href="/vendor/feedback" className={styles.viewAll}>View all →</Link>
-            </div>
-            {feedback.length === 0 ? (
-              <p className={styles.empty}>No passenger feedback yet.</p>
-            ) : (
-              <div className={styles.reviewList}>
-                {feedback.slice(0, 5).map((f) => (
-                  <div key={f.id} className={styles.reviewCard}>
-                    <div className={styles.reviewStars}>
-                      {"★".repeat(f.rating)}{"☆".repeat(5 - f.rating)}
+          {/* Two-Column Split: Package Complaints & Customer Ratings */}
+          <div className={styles.twoCol}>
+            <section className={styles.section}>
+              <div className={styles.sectionHead}>
+                <h3 className={styles.sectionTitle}>Complaints on Your Packages</h3>
+                <Link href="/vendor/complaints" className={styles.viewAll}>View all →</Link>
+              </div>
+              {complaints.length === 0 ? (
+                <p className={styles.empty}>No complaints filed against your food packages.</p>
+              ) : (
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Package</th>
+                        <th>Issue</th>
+                        <th>Severity</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {complaints.slice(0, 5).map((c) => (
+                        <tr key={c.id}>
+                          <td className={styles.bold}>{c.food_packages?.package_name || "Package"}</td>
+                          <td>{c.issue_type?.replace(/_/g, " ") || "—"}</td>
+                          <td><SeverityBadge severity={c.severity} /></td>
+                          <td><StatusBadge status={c.status} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            <section className={styles.section}>
+              <div className={styles.sectionHead}>
+                <h3 className={styles.sectionTitle}>Recent Customer Feedback</h3>
+                <Link href="/vendor/feedback" className={styles.viewAll}>View all →</Link>
+              </div>
+              {feedback.length === 0 ? (
+                <p className={styles.empty}>No customer ratings recorded yet.</p>
+              ) : (
+                <div className={styles.reviewList}>
+                  {feedback.slice(0, 4).map((f) => (
+                    <div key={f.id} className={styles.reviewCard}>
+                      <div className={styles.reviewStars}>Rating: {f.rating} / 5</div>
+                      <p className={styles.reviewComment}>{f.comment || "No written comment."}</p>
+                      <span className={styles.reviewDate}>{formatDate(f.created_at)}</span>
                     </div>
-                    <p className={styles.reviewComment}>{f.comment || "Rating only — no comment."}</p>
-                    <span className={styles.reviewDate}>
-                      {new Date(f.created_at).toLocaleDateString("en-IN")}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* ── Recent Complaints ── */}
-          <section className={styles.section}>
-            <div className={styles.sectionHead}>
-              <h3 className={styles.sectionTitle}>⚠️ Recent Complaints</h3>
-              <Link href="/vendor/complaints" className={styles.viewAll}>View all →</Link>
-            </div>
-            {complaints.length === 0 ? (
-              <p className={styles.empty}>No complaints filed against your packages. Keep it up!</p>
-            ) : (
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Issue Type</th>
-                      <th>Severity</th>
-                      <th>Status</th>
-                      <th>Filed</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {complaints.slice(0, 5).map((c) => (
-                      <tr key={c.id}>
-                        <td className={styles.bold}>
-                          {c.issue_type?.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase()) || "—"}
-                        </td>
-                        <td><SeverityBadge severity={c.severity} /></td>
-                        <td><StatusBadge status={c.status} /></td>
-                        <td>{new Date(c.created_at).toLocaleDateString("en-IN")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
 
           <p className={styles.disclaimer}>
-            Vendors can view only their own packages, feedback, and complaints.
-            Complaint assignment, inspection reports, and complaint closure are managed by the RailGuard Admin.
+            Access is scoped strictly to your catering business. Passenger contact details and internal inspection records are hidden.
           </p>
         </div>
       )}

@@ -1,35 +1,34 @@
 /* app/globals.css
- * Global Base Styles & Design System Tokens
- * Pure standard CSS. No external CSS libraries or frameworks.
+ * Global Base Styles & Enterprise Railway Design System Tokens
  */
 
 :root {
-  /* Brand palette — Deep Railway Red + Crisp White + Light Grey */
-  --navy:        #8b1a1a;
-  --navy-dark:   #5c1010;
-  --navy-mid:    #a92323;
-  --red:         #c0392b;
-  --red-light:   #fdecea;
-  --green:       #1a7a4a;
-  --green-light: #e6f4ec;
+  /* Restrained Enterprise Railway Palette */
+  --navy:        #1b365d;
+  --navy-dark:   #12233d;
+  --navy-mid:    #25487a;
+  --rail-accent: #8b2626;
+  --red:         #b91c1c;
+  --red-light:   #fef2f2;
+  --green:       #15803d;
+  --green-light: #f0fdf4;
   --amber:       #b45309;
-  --amber-light: #fef3c7;
-  --blue-light:  #fdecea;
+  --amber-light: #fffbeb;
+  --blue-light:  #eff6ff;
 
-  /* Surfaces & typography */
-  --bg:          #f4f6f9;
+  /* Surfaces & Typography */
+  --bg:          #f5f6f8;
   --surface:     #ffffff;
-  --border:      #d1d9e0;
-  --text:        #1a2535;
-  --text-muted:  #5a6a7e;
+  --border:      #d8dee6;
+  --text:        #111827;
+  --text-muted:  #4b5563;
 
-  /* Shadows */
-  --shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-md:   0 4px 12px rgba(0, 0, 0, 0.10);
-  --shadow-lg:   0 8px 24px rgba(0, 0, 0, 0.14);
+  /* Subtle elevation */
+  --shadow-sm:   0 1px 2px rgba(17, 24, 39, 0.05);
+  --shadow-md:   0 2px 8px rgba(17, 24, 39, 0.08);
+  --shadow-lg:   0 8px 20px rgba(17, 24, 39, 0.12);
 }
 
-/* Base reset */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -44,7 +43,7 @@ html {
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -72,21 +71,20 @@ input, select, textarea {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #c1cdd8;
-  border-radius: 4px;
+  background: #cbd5e1;
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
 
-/* Skeleton shimmer animation */
 @keyframes shimmer {
   0%   { background-position: -600px 0; }
   100% { background-position:  600px 0; }
 }
 
 .skeleton {
-  background: linear-gradient(90deg, #e4eaf0 25%, #f4f6f9 50%, #e4eaf0 75%);
+  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
   background-size: 600px 100%;
   animation: shimmer 1.5s infinite linear;
   border-radius: 4px;

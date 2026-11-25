@@ -1,28 +1,62 @@
 /* components/layout/AdminLayout.jsx
- *
- * Shell that wraps every admin page: Sidebar + Header + main content.
- *
- * HOW IT WORKS:
- *   useState(false) tracks whether the mobile sidebar is open.
- *   The sidebar gets `open` and `onClose` as props.
- *   `children` is the actual page content (injected by Next.js routing).
- *
- * JAVASCRIPT CONCEPT: useState hook
- *   const [sidebarOpen, setSidebarOpen] = useState(false);
- *   - sidebarOpen is the current value (starts as false = closed).
- *   - setSidebarOpen is the function that changes it.
- *   When the state changes, React re-renders only what changed.
+ * Shell wrapping every admin page with strict role='admin' authorization.
  */
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import AdminSidebar from "./AdminSidebar";
 import AdminHeader from "./AdminHeader";
+import { createClient } from "@/lib/supabase/client";
+import { getCurrentUserProfile } from "@/lib/auth";
 import styles from "./AdminLayout.module.css";
 
 export default function AdminLayout({ children, title = "Dashboard" }) {
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    async function verifyAdmin() {
+      const supabase = createClient();
+      if (!supabase) {
+        // Allow rendering setup banner when Supabase env vars are not configured
+        if (active) {
+          setAuthorized(true);
+          setChecking(false);
+        }
+        return;
+      }
+
+      try {
+        const authData = await getCurrentUserProfile();
+        if (!authData?.user || authData.profile?.role !== "admin") {
+          router.replace("/admin/login");
+          return;
+        }
+        if (active) setAuthorized(true);
+      } catch {
+        router.replace("/admin/login");
+      } finally {
+        if (active) setChecking(false);
+      }
+    }
+    verifyAdmin();
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
+  if (checking || !authorized) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.95rem" }}>
+        Verifying Railway Administration session…
+      </div>
+    );
+  }
 
   return (
     <div className={styles.shell}>

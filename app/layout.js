@@ -1,9 +1,8 @@
 /* app/layout.js
- * Root layout — wraps every page in the app.
- * Sets the HTML lang, body font, and global metadata.
- * No mock data here — just structure.
+ * Root layout — wraps every page in the app with ToastProvider.
  */
 import "./globals.css";
+import { ToastProvider } from "@/components/ui/Toast";
 
 export const metadata = {
   title: "RailGuard – Railway Food Quality Audit",
@@ -14,7 +13,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" data-scroll-behavior="smooth">
-      <body>{children}</body>
+      <body>
+        <ToastProvider>{children}</ToastProvider>
+      </body>
     </html>
   );
 }

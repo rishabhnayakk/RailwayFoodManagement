@@ -1,33 +1,58 @@
-/* components/layout/PassengerLayout.jsx
- * Navigation shell for the Railway Passenger Portal.
- * Provides sticky top navigation, user profile summary, quick QR scan link,
- * and session sign out.
- */
+/* components/layout/PassengerLayout.jsx */
 
 "use client";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { getCurrentUserProfile, signOutUser } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/client";
+import { getCurrentUserProfile, signOutUser, getPortalHomeForRole } from "@/lib/auth";
+import NavIcon from "@/components/ui/NavIcon";
 import styles from "./PassengerLayout.module.css";
 
 export default function PassengerLayout({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const [profile, setProfile] = useState(null);
+  const [authorized, setAuthorized] = useState(false);
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
+    let active = true;
     async function checkAuth() {
-      const authData = await getCurrentUserProfile();
-      if (!authData?.user) {
-        // Passenger is not logged in -> redirect to login
-        router.push("/auth/login");
+      const supabase = createClient();
+      if (!supabase) {
+        if (active) {
+          setAuthorized(true);
+          setChecking(false);
+        }
         return;
       }
-      setProfile(authData.profile);
+
+      try {
+        const authData = await getCurrentUserProfile();
+        if (!authData?.user) {
+          router.replace("/auth/login");
+          return;
+        }
+        if (authData.profile?.role !== "passenger") {
+          router.replace(getPortalHomeForRole(authData.profile?.role));
+          return;
+        }
+        if (active) {
+          setProfile(authData.profile);
+          setAuthorized(true);
+        }
+      } catch {
+        router.replace("/auth/login");
+      } finally {
+        if (active) setChecking(false);
+      }
     }
     checkAuth();
+    return () => {
+      active = false;
+    };
   }, [router]);
 
   async function handleSignOut() {
@@ -35,16 +60,20 @@ export default function PassengerLayout({ children }) {
     router.push("/auth/login");
   }
 
+  if (checking || !authorized) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.9rem" }}>
+        Verifying Passenger session…
+      </div>
+    );
+  }
+
   return (
     <div className={styles.shell}>
-      {/* Top Navbar */}
       <nav className={styles.nav}>
         <Link href="/passenger" className={styles.brand}>
-          <div className={styles.logoIcon}>🛡️</div>
-          <div>
-            <div className={styles.brandName}>RailGuard Passenger</div>
-            <div className={styles.brandSub}>Quality Tracking & Feedback</div>
-          </div>
+          <div className={styles.brandName}>RailGuard</div>
+          <div className={styles.brandSub}>Passenger Portal</div>
         </Link>
 
         <div className={styles.navLinks}>
@@ -52,37 +81,35 @@ export default function PassengerLayout({ children }) {
             href="/passenger"
             className={`${styles.link} ${pathname === "/passenger" ? styles.linkActive : ""}`}
           >
-            Dashboard
+            Overview
           </Link>
           <Link
             href="/passenger/complaints"
             className={`${styles.link} ${pathname === "/passenger/complaints" ? styles.linkActive : ""}`}
           >
-            My Complaints
+            Complaints
           </Link>
           <Link
             href="/passenger/feedback"
             className={`${styles.link} ${pathname === "/passenger/feedback" ? styles.linkActive : ""}`}
           >
-            My Ratings
+            Ratings
           </Link>
 
           <Link href="/scan" className={styles.scanBtn}>
-            📱 Scan Food QR
+            <NavIcon name="qr" size={15} />
+            <span>Scan QR</span>
           </Link>
 
           <div className={styles.userMenu}>
-            <span style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.85)" }}>
-              {profile?.full_name || "Passenger"}
-            </span>
-            <button onClick={handleSignOut} className={styles.signOutBtn}>
+            <span className={styles.userName}>{profile?.full_name || "Passenger"}</span>
+            <button type="button" onClick={handleSignOut} className={styles.signOutBtn}>
               Sign Out
             </button>
           </div>
         </div>
       </nav>
 
-      {/* Main Container */}
       <main className={styles.content}>{children}</main>
     </div>
   );

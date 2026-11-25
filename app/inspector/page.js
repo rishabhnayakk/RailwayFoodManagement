@@ -1,7 +1,4 @@
-/* app/inspector/page.js
- * Quality Inspector Overview Dashboard
- * Displays metrics for cases assigned specifically to this inspector.
- */
+/* app/inspector/page.js — Quality Inspector Workbench */
 
 "use client";
 
@@ -11,7 +8,7 @@ import InspectorLayout from "@/components/layout/InspectorLayout";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
 import { StatusBadge, SeverityBadge } from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
-import { SkeletonCard, SkeletonLine } from "@/components/ui/Skeleton";
+import { SkeletonLine } from "@/components/ui/Skeleton";
 import { formatDate } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentUserProfile } from "@/lib/auth";
@@ -24,7 +21,7 @@ export default function InspectorOverviewPage() {
   useEffect(() => {
     async function loadInspectorDashboard() {
       setLoading(true);
-      const authData = await getCurrentUserProfile();
+      const authData = await getCurrentUserProfile().catch(() => null);
       if (!authData?.user) {
         setLoading(false);
         return;
@@ -69,84 +66,67 @@ export default function InspectorOverviewPage() {
     loadInspectorDashboard();
   }, []);
 
-  const totalAssigned = cases.length;
-  const pendingCases = cases.filter(
-    (c) => c.status === "assigned" || c.status === "in_progress"
-  ).length;
-  const submittedReports = cases.filter(
-    (c) => c.status === "report_submitted"
-  ).length;
-  const resolvedCases = cases.filter((c) => c.status === "resolved").length;
+  const activeQueue = cases.filter((c) =>
+    ["assigned", "in_progress", "reopened"].includes(c.status)
+  );
+  const completedQueue = cases.filter((c) =>
+    !["assigned", "in_progress", "reopened"].includes(c.status)
+  );
+
+  const metrics = [
+    { label: "Total Assigned", value: cases.length },
+    { label: "Pending Action", value: cases.filter((c) => c.status === "assigned" || c.status === "reopened").length },
+    { label: "In Progress", value: cases.filter((c) => c.status === "in_progress").length },
+    { label: "Reports Submitted", value: cases.filter((c) => c.status === "report_submitted").length },
+    { label: "Resolved", value: cases.filter((c) => c.status === "resolved").length },
+  ];
 
   return (
-    <InspectorLayout title="Inspector Dashboard">
-      {/* KPI Counters */}
-      {loading ? (
-        <div className={styles.kpiRow}>
-          {[1, 2, 3, 4].map((i) => (
-            <SkeletonCard key={i} />
-          ))}
-        </div>
-      ) : (
-        <div className={styles.kpiRow}>
-          <div className={styles.kpiCard}>
-            <div className={styles.kpiIcon}>📋</div>
-            <div className={styles.kpiNumber}>{totalAssigned}</div>
-            <div className={styles.kpiLabel}>Total Cases Assigned</div>
+    <InspectorLayout title="Investigation Workbench">
+      {/* Compact Workload Strip */}
+      <section className={styles.summaryStrip}>
+        {metrics.map((m) => (
+          <div key={m.label} className={styles.summaryCell}>
+            {loading ? (
+              <SkeletonLine width="50%" height={22} />
+            ) : (
+              <div className={styles.kpiNumber}>{m.value}</div>
+            )}
+            <div className={styles.kpiLabel}>{m.label}</div>
           </div>
-          <div className={styles.kpiCard}>
-            <div className={styles.kpiIcon}>⏳</div>
-            <div className={styles.kpiNumber}>{pendingCases}</div>
-            <div className={styles.kpiLabel}>Pending Investigation</div>
-          </div>
-          <div className={styles.kpiCard}>
-            <div className={styles.kpiIcon}>📝</div>
-            <div className={styles.kpiNumber}>{submittedReports}</div>
-            <div className={styles.kpiLabel}>Reports Submitted</div>
-          </div>
-          <div className={styles.kpiCard}>
-            <div className={styles.kpiIcon}>✅</div>
-            <div className={styles.kpiNumber}>{resolvedCases}</div>
-            <div className={styles.kpiLabel}>Resolved Cases</div>
-          </div>
-        </div>
-      )}
+        ))}
+      </section>
 
-      {/* Assigned Cases Table */}
-      <Card>
+      {/* Primary Focus: Active Investigation Queue */}
+      <Card style={{ marginBottom: "20px" }}>
         <CardHeader>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <CardTitle>Recent Assigned Quality Cases ({cases.length})</CardTitle>
-            <Link
-              href="/inspector/cases"
-              style={{ fontSize: "0.85rem", color: "var(--navy)", fontWeight: 600 }}
-            >
-              View All Cases →
-            </Link>
-          </div>
+          <CardTitle>Active Investigation Queue ({activeQueue.length})</CardTitle>
+          <Link
+            href="/inspector/cases"
+            style={{ fontSize: "0.82rem", color: "var(--navy)", fontWeight: 600 }}
+          >
+            All assigned cases →
+          </Link>
         </CardHeader>
         <CardBody style={{ padding: 0 }}>
           {loading ? (
-            <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "12px" }}>
-              {[1, 2, 3].map((i) => (
-                <SkeletonLine key={i} height={20} />
-              ))}
+            <div style={{ padding: "18px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              {[1, 2, 3].map((i) => <SkeletonLine key={i} height={18} />)}
             </div>
-          ) : cases.length === 0 ? (
+          ) : activeQueue.length === 0 ? (
             <EmptyState
-              icon="🔍"
-              title="No complaints assigned yet"
-              description="You have zero active investigation assignments. Complaints assigned to you by Railway Administration will appear here."
+              title="No active investigations"
+              description="Complaints assigned to you by Railway Administration will appear in this queue."
             />
           ) : (
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead>
                   <tr>
-                    <th>Case Ref</th>
+                    <th>Case ID</th>
                     <th>Food Package</th>
-                    <th>Vendor</th>
-                    <th>Issue Type</th>
+                    <th>Vendor &amp; Station</th>
+                    <th>Issue</th>
                     <th>Severity</th>
                     <th>Status</th>
                     <th>Reported</th>
@@ -154,38 +134,24 @@ export default function InspectorOverviewPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {cases.slice(0, 5).map((c) => (
+                  {activeQueue.map((c) => (
                     <tr key={c.id}>
-                      <td style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
-                        {c.id.slice(0, 8)}…
-                      </td>
-                      <td style={{ fontWeight: 600 }}>
-                        {c.food_packages?.package_name || "Food Package"}
-                      </td>
+                      <td style={{ fontFamily: "monospace", fontSize: "0.78rem" }}>{c.id.slice(0, 8)}</td>
+                      <td style={{ fontWeight: 600 }}>{c.food_packages?.package_name || "Food Package"}</td>
                       <td style={{ color: "var(--text-muted)" }}>
                         {c.food_packages?.vendors?.business_name || "—"}
+                        {c.food_packages?.vendors?.station_location ? ` (${c.food_packages.vendors.station_location})` : ""}
                       </td>
                       <td>{c.issue_type?.replace(/_/g, " ")}</td>
-                      <td>
-                        <SeverityBadge severity={c.severity} />
-                      </td>
-                      <td>
-                        <StatusBadge status={c.status} />
-                      </td>
-                      <td style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                        {formatDate(c.created_at)}
-                      </td>
+                      <td><SeverityBadge severity={c.severity} /></td>
+                      <td><StatusBadge status={c.status} /></td>
+                      <td style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>{formatDate(c.created_at)}</td>
                       <td>
                         <Link
                           href={`/inspector/cases/${c.id}`}
-                          style={{
-                            fontSize: "0.82rem",
-                            fontWeight: 700,
-                            color: "var(--navy)",
-                            textDecoration: "underline",
-                          }}
+                          style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--navy)", textDecoration: "underline" }}
                         >
-                          Investigate →
+                          Open File
                         </Link>
                       </td>
                     </tr>
@@ -196,6 +162,56 @@ export default function InspectorOverviewPage() {
           )}
         </CardBody>
       </Card>
+
+      {/* Secondary: Filed / Closed Cases */}
+      {completedQueue.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Submitted &amp; Reviewed Cases ({completedQueue.length})</CardTitle>
+            <Link
+              href="/inspector/history"
+              style={{ fontSize: "0.82rem", color: "var(--navy)", fontWeight: 600 }}
+            >
+              Report archive →
+            </Link>
+          </CardHeader>
+          <CardBody style={{ padding: 0 }}>
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Case ID</th>
+                    <th>Food Package</th>
+                    <th>Vendor</th>
+                    <th>Status</th>
+                    <th>Reported</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {completedQueue.slice(0, 5).map((c) => (
+                    <tr key={c.id}>
+                      <td style={{ fontFamily: "monospace", fontSize: "0.78rem" }}>{c.id.slice(0, 8)}</td>
+                      <td style={{ fontWeight: 600 }}>{c.food_packages?.package_name || "Food Package"}</td>
+                      <td style={{ color: "var(--text-muted)" }}>{c.food_packages?.vendors?.business_name || "—"}</td>
+                      <td><StatusBadge status={c.status} /></td>
+                      <td style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>{formatDate(c.created_at)}</td>
+                      <td>
+                        <Link
+                          href={`/inspector/cases/${c.id}`}
+                          style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--navy)" }}
+                        >
+                          View
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardBody>
+        </Card>
+      )}
     </InspectorLayout>
   );
 }

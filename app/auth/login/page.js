@@ -1,8 +1,4 @@
-/* app/auth/login/page.js
- * Passenger / Universal Portal Login
- * Authenticates user and redirects to the appropriate dashboard
- * based on the user's role: admin -> /admin, inspector -> /inspector, passenger -> /passenger.
- */
+/* app/auth/login/page.js — Passenger & Unified Portal Sign In */
 
 "use client";
 
@@ -11,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Button from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { signInUser, getCurrentUserProfile } from "@/lib/auth";
+import { signInUser, getCurrentUserProfile, getPortalHomeForRole } from "@/lib/auth";
 import styles from "../auth.module.css";
 
 export default function LoginPage() {
@@ -29,20 +25,9 @@ export default function LoginPage() {
     try {
       await signInUser(email, password);
       const userProfile = await getCurrentUserProfile();
-
       const role = userProfile?.profile?.role;
-      if (!role) throw new Error("Your account profile is missing. Please contact the RailGuard administrator.");
-      if (role === "admin") {
-        router.push("/admin");
-      } else if (role === "inspector") {
-        router.push("/inspector");
-      } else if (role === "vendor") {
-        router.push("/vendor");
-      } else if (role === "passenger") {
-        router.push("/passenger");
-      } else {
-        throw new Error("This account has an unsupported role. Contact the administrator.");
-      }
+      if (!role) throw new Error("Account profile is missing. Contact RailGuard Administration.");
+      router.push(getPortalHomeForRole(role));
     } catch (err) {
       setError(err.message || "Failed to sign in. Please verify your credentials.");
     } finally {
@@ -56,20 +41,17 @@ export default function LoginPage() {
         <Link href="/" className={styles.backLink}>
           ← Back to Home
         </Link>
-        <div className={styles.brand}>
-          <span>🛡️</span>
-          <span>RailGuard</span>
-        </div>
+        <div className={styles.brand}>RailGuard</div>
       </div>
 
       <div className={styles.main}>
         <div className={styles.card}>
           <span className={`${styles.badgeHeader} ${styles.badgePassenger}`}>
-            Unified Access Portal
+            Passenger Portal
           </span>
           <h1 className={styles.title}>Sign In to RailGuard</h1>
           <p className={styles.subtitle}>
-            One secure sign-in for Railway Admin, Food Inspector, Catering Vendor and Passenger accounts.
+            Sign in with your RailGuard credentials to access your portal.
           </p>
 
           {error && <div className={styles.errorBanner}>{error}</div>}
@@ -92,7 +74,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
             <Button type="submit" variant="primary" full loading={loading}>
-              Sign In →
+              Sign In
             </Button>
           </form>
 
@@ -103,7 +85,11 @@ export default function LoginPage() {
             </Link>
           </p>
 
-          <div className={styles.roleLinks}>Role-based access · Secure account verification</div>
+          <div className={styles.roleLinks}>
+            <Link href="/vendor/login">Vendor Login</Link> ·{" "}
+            <Link href="/inspector/login">Inspector Login</Link> ·{" "}
+            <Link href="/admin/login">Admin Login</Link>
+          </div>
         </div>
       </div>
     </div>

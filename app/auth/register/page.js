@@ -1,12 +1,4 @@
-/* app/auth/register/page.js
- * Passenger Registration Page
- * Collects only necessary passenger information:
- * - Full Name
- * - Email
- * - Mobile Number
- * - Password
- * - Confirm Password (frontend validation)
- */
+/* app/auth/register/page.js — Passenger Registration */
 
 "use client";
 
@@ -68,10 +60,7 @@ export default function RegisterPage() {
         <Link href="/" className={styles.backLink}>
           ← Back to Home
         </Link>
-        <div className={styles.brand}>
-          <span>🛡️</span>
-          <span>RailGuard</span>
-        </div>
+        <div className={styles.brand}>RailGuard</div>
       </div>
 
       <div className={styles.main}>
@@ -81,13 +70,13 @@ export default function RegisterPage() {
           </span>
           <h1 className={styles.title}>Create Passenger Account</h1>
           <p className={styles.subtitle}>
-            Register to track food quality complaints, rate vendors, and receive investigation updates.
+            Register to track your food quality complaints and rating history.
           </p>
 
           {error && <div className={styles.errorBanner}>{error}</div>}
           {success && (
             <div className={styles.successBanner}>
-              Account created. If email confirmation is enabled, check your inbox and verify your email before signing in.
+              Account created. If email confirmation is enabled, check your inbox before signing in.
             </div>
           )}
 
@@ -114,12 +103,11 @@ export default function RegisterPage() {
               placeholder="+91 98765 43210"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              hint="Used only for complaint resolution status updates via SMS"
             />
             <Input
               label="Password"
               type="password"
-              placeholder="•••••••• (Min. 6 characters)"
+              placeholder="Min. 6 characters"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -127,14 +115,14 @@ export default function RegisterPage() {
             <Input
               label="Confirm Password"
               type="password"
-              placeholder="••••••••"
+              placeholder="Re-enter password"
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
 
             <Button type="submit" variant="primary" full loading={loading}>
-              Create Account →
+              Create Account
             </Button>
           </form>
 

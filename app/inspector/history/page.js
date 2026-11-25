@@ -1,8 +1,5 @@
 /* app/inspector/history/page.js
  * Quality Inspector Investigation History
- *
- * Displays chronological log of all quality audit reports submitted by this inspector.
- * Provides quick access to past case records and official findings.
  */
 
 "use client";
@@ -10,11 +7,11 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import InspectorLayout from "@/components/layout/InspectorLayout";
-import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
-import { StatusBadge, SeverityBadge } from "@/components/ui/Badge";
+import { Card, CardBody } from "@/components/ui/Card";
+import { StatusBadge } from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
 import { SkeletonLine } from "@/components/ui/Skeleton";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentUserProfile } from "@/lib/auth";
 import styles from "../inspector.module.css";
@@ -26,7 +23,7 @@ export default function InspectorHistoryPage() {
   useEffect(() => {
     async function loadReports() {
       setLoading(true);
-      const authData = await getCurrentUserProfile();
+      const authData = await getCurrentUserProfile().catch(() => null);
       if (!authData?.user) {
         setLoading(false);
         return;
@@ -117,11 +114,12 @@ export default function InspectorHistoryPage() {
               <table className={styles.table}>
                 <thead>
                   <tr>
-                    <th>Report Date</th>
+                    <th>Investigation Date</th>
                     <th>Case Ref</th>
                     <th>Package & Vendor</th>
-                    <th>Issue Type</th>
-                    <th>Findings Summary</th>
+                    <th>Problem Identified</th>
+                    <th>Action Taken</th>
+                    <th>Outcome</th>
                     <th>Case Status</th>
                     <th>Action</th>
                   </tr>
@@ -130,7 +128,7 @@ export default function InspectorHistoryPage() {
                   {reports.map((r) => (
                     <tr key={r.id}>
                       <td style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                        {formatDate(r.created_at)}
+                        {formatDate(r.investigation_date || r.created_at)}
                       </td>
                       <td style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
                         {r.complaint_id?.slice(0, 8)}…
@@ -140,14 +138,17 @@ export default function InspectorHistoryPage() {
                           {r.complaints?.food_packages?.package_name || "Food Package"}
                         </div>
                         <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                          {r.complaints?.food_packages?.vendors?.business_name || "—"} ({r.complaints?.food_packages?.vendors?.station_location || "Station"})
+                          {r.complaints?.food_packages?.vendors?.business_name || "—"}
                         </div>
                       </td>
-                      <td>{r.complaints?.issue_type?.replace(/_/g, " ")}</td>
-                      <td style={{ maxWidth: "260px" }}>
-                        <p style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "0.82rem" }}>
-                          {r.findings}
-                        </p>
+                      <td style={{ maxWidth: "220px", fontSize: "0.82rem" }}>
+                        {r.problem_identified || r.findings}
+                      </td>
+                      <td style={{ maxWidth: "220px", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                        {r.action_taken || r.remarks || "—"}
+                      </td>
+                      <td>
+                        <StatusBadge status={r.recommended_status || "report_submitted"} />
                       </td>
                       <td>
                         <StatusBadge status={r.complaints?.status || "report_submitted"} />

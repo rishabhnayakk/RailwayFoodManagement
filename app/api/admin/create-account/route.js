@@ -45,12 +45,12 @@ export async function POST(request) {
 
     const { data: adminProfile, error: profileErr } = await serverSupabase
       .from("profiles")
-      .select("role")
+      .select("role, status")
       .eq("id", user.id)
       .single();
 
-    if (profileErr || adminProfile?.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden — admin access required." }, { status: 403 });
+    if (profileErr || adminProfile?.role !== "admin" || adminProfile?.status === "suspended") {
+      return NextResponse.json({ error: "Forbidden — active admin access required." }, { status: 403 });
     }
 
     // ── 2. Parse and validate the request body ─────────────────────────────
@@ -123,6 +123,7 @@ export async function POST(request) {
       full_name: full_name.trim(),
       phone: phone?.trim() || null,
       role,
+      status: "active",
     });
 
     if (profileUpsertErr) {

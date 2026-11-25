@@ -178,29 +178,27 @@ export default function ScanPage() {
     <div className={styles.container}>
       <div className={styles.topBar}>
         <Link href="/" className={styles.backLink}>← Back to Home</Link>
-        <div className={styles.brand}><span>🛡️</span><span>RailGuard</span></div>
+        <div className={styles.brand}>RailGuard</div>
       </div>
 
       <div className={styles.body}>
         <div className={styles.card}>
-          <div className={styles.iconBox}>📱</div>
           <h1 className={styles.title}>Scan Food Package QR</h1>
           <p className={styles.subtitle}>
-            Scan the official RailGuard QR printed on the food package to verify the vendor and share your feedback.
+            Scan the RailGuard QR printed on the food package to verify the vendor and submit feedback or a complaint.
           </p>
 
           <div className={styles.scannerArea}>
             <div className={styles.scannerHeader}>
-              <strong>QR Camera Scanner</strong>
+              <strong>Camera Scanner</strong>
               <span className={cameraActive ? styles.liveBadge : styles.offBadge}>
-                {cameraActive ? "● LIVE" : "CAMERA OFF"}
+                {cameraActive ? "LIVE" : "OFF"}
               </span>
             </div>
             <div className={styles.videoFrame}>
               <div id="railguard-qr-reader" className={styles.qrReader} />
               {!cameraActive && (
                 <div className={styles.videoPlaceholder}>
-                  <span>▦</span>
                   <small>Camera preview will appear here</small>
                 </div>
               )}
@@ -210,10 +208,10 @@ export default function ScanPage() {
             {cameraActive ? (
               <Button variant="outline" full onClick={stopCamera}>Stop Camera</Button>
             ) : (
-              <Button variant="primary" full onClick={startCamera}>📷 Start QR Scanner</Button>
+              <Button variant="primary" full onClick={startCamera}>Start QR Scanner</Button>
             )}
             <p className={styles.permissionNote}>
-              Camera starts only after you tap the button. Scanning happens on this device.
+              Camera activates only when you click Start QR Scanner.
             </p>
           </div>
 
@@ -230,11 +228,11 @@ export default function ScanPage() {
               className={styles.input}
               required
             />
-            <Button type="submit" variant="primary" full>Verify Package Details →</Button>
+            <Button type="submit" variant="primary" full>Verify Package Details</Button>
           </form>
 
           <p className={styles.notice}>
-            🔒 No account is required to submit feedback. Camera access is used only when you tap Start QR Scanner.
+            No sign-in is required to submit food feedback. Sign in if you want complaints linked to your passenger account.
           </p>
         </div>
       </div>

@@ -1,7 +1,4 @@
-/* components/layout/InspectorLayout.jsx
- * Navigation Shell for Quality Inspectors.
- * Restricts view strictly to assigned cases and investigation tools.
- */
+/* components/layout/InspectorLayout.jsx */
 
 "use client";
 
@@ -9,30 +6,51 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { INSPECTOR_NAV } from "@/lib/constants";
+import { createClient } from "@/lib/supabase/client";
 import { getCurrentUserProfile, signOutUser } from "@/lib/auth";
+import NavIcon from "@/components/ui/NavIcon";
 import styles from "./InspectorLayout.module.css";
 
 export default function InspectorLayout({ children, title = "Inspector Portal" }) {
   const pathname = usePathname();
   const router = useRouter();
   const [profile, setProfile] = useState(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
+    let active = true;
     async function checkInspectorAuth() {
-      const authData = await getCurrentUserProfile();
-      if (!authData?.user) {
-        router.push("/inspector/login");
+      const supabase = createClient();
+      if (!supabase) {
+        if (active) {
+          setAuthorized(true);
+          setChecking(false);
+        }
         return;
       }
 
-      if (authData.profile?.role !== "inspector" && authData.profile?.role !== "admin") {
-        router.push("/auth/login");
-        return;
+      try {
+        const authData = await getCurrentUserProfile();
+        if (!authData?.user || authData.profile?.role !== "inspector") {
+          router.replace("/inspector/login");
+          return;
+        }
+        if (active) {
+          setProfile(authData.profile);
+          setAuthorized(true);
+        }
+      } catch {
+        router.replace("/inspector/login");
+      } finally {
+        if (active) setChecking(false);
       }
-
-      setProfile(authData.profile);
     }
     checkInspectorAuth();
+    return () => {
+      active = false;
+    };
   }, [router]);
 
   async function handleSignOut() {
@@ -40,12 +58,22 @@ export default function InspectorLayout({ children, title = "Inspector Portal" }
     router.push("/inspector/login");
   }
 
+  if (checking || !authorized) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.9rem" }}>
+        Verifying Quality Inspector session…
+      </div>
+    );
+  }
+
   return (
     <div className={styles.shell}>
-      {/* Sidebar */}
-      <aside className={styles.sidebar}>
+      {mobileOpen && (
+        <div className={styles.overlay} onClick={() => setMobileOpen(false)} />
+      )}
+
+      <aside className={`${styles.sidebar} ${mobileOpen ? styles.sidebarOpen : ""}`}>
         <div className={styles.logo}>
-          <div className={styles.logoIcon}>🔍</div>
           <div>
             <div className={styles.logoName}>RailGuard</div>
             <div className={styles.logoSub}>Quality Inspectorate</div>
@@ -62,9 +90,10 @@ export default function InspectorLayout({ children, title = "Inspector Portal" }
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => setMobileOpen(false)}
                 className={`${styles.navLink} ${isActive ? styles.navLinkActive : ""}`}
               >
-                <span>{item.icon}</span>
+                <NavIcon name={item.icon} />
                 <span>{item.label}</span>
               </Link>
             );
@@ -72,24 +101,30 @@ export default function InspectorLayout({ children, title = "Inspector Portal" }
         </nav>
 
         <div className={styles.footer}>
-          <button onClick={handleSignOut} className={styles.signOut}>
-            <span>🚪</span>
+          <button type="button" onClick={handleSignOut} className={styles.signOut}>
+            <NavIcon name="signout" />
             <span>Sign Out</span>
           </button>
         </div>
       </aside>
 
-      {/* Main Area */}
       <div className={styles.mainArea}>
         <header className={styles.header}>
-          <h1 className={styles.title}>{title}</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <button
+              className={styles.menuBtn}
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open menu"
+            >
+              ☰
+            </button>
+            <h1 className={styles.title}>{title}</h1>
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text)" }}>
-              Officer: {profile?.full_name || "Quality Inspector"}
+            <span style={{ fontSize: "0.84rem", fontWeight: 500, color: "var(--text-muted)" }}>
+              {profile?.full_name || "Quality Inspector"}
             </span>
-            <span style={{ fontSize: "0.72rem", background: "#ede9fe", color: "#6d28d9", padding: "3px 8px", borderRadius: "999px", fontWeight: 700 }}>
-              INSPECTOR
-            </span>
+            <span className={styles.roleTag}>INSPECTOR</span>
           </div>
         </header>
 

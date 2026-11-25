@@ -1,45 +1,41 @@
 /* app/admin/qr-codes/page.js
- * QR Code & Food Package Management Portal
+ * Admin Food Package Approval & QR Compliance Monitoring
  *
- * Railway administrators register authorized food packages and generate
- * unique cryptographic tokens for printing on passenger meal containers.
- * Generates downloadable QR code images using the `qrcode` library.
- * NO fake records. Real database connections and empty state.
+ * IMPORTANT ROLE BOUNDARY:
+ * - Admin does NOT upload food packages and does NOT generate vendor QR codes.
+ * - Vendors upload food packages and generate QR codes in /vendor/packages.
+ * - Admin reviews, approves, or rejects vendor-uploaded packages and can revoke
+ *   or reactivate QR codes for safety compliance.
  */
 
 "use client";
 
 import { useState, useEffect } from "react";
-import QRCode from "qrcode";
 import AdminLayout from "@/components/layout/AdminLayout";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
+import { ApprovalBadge } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/Toast";
 import { SkeletonLine } from "@/components/ui/Skeleton";
-import { formatDate, generateToken } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentUserProfile } from "@/lib/auth";
 import styles from "./qrcodes.module.css";
 
-export default function QrCodesPage() {
+export default function AdminPackageApprovalsPage() {
+  const toast = useToast();
   const [packages, setPackages] = useState([]);
-  const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [approvalFilter, setApprovalFilter] = useState("all");
+  const [search, setSearch] = useState("");
 
-  // Active QR View Modal State
-  const [activeQrModal, setActiveQrModal] = useState(null);
-  const [qrDataUrl, setQrDataUrl] = useState("");
-  const [generatingQr, setGeneratingQr] = useState(false);
-
-  const [formData, setFormData] = useState({
-    package_name: "",
-    vendor_id: "",
-    category: "Meal",
-    description: "",
-    price: "",
-  });
+  const [inspectModalPkg, setInspectModalPkg] = useState(null);
+  const [rejectModalPkg, setRejectModalPkg] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [confirmQrPkg, setConfirmQrPkg] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   async function loadData() {
     setLoading(true);
@@ -50,43 +46,40 @@ export default function QrCodesPage() {
     }
 
     try {
-      const [pkgsRes, vendsRes] = await Promise.all([
-        supabase
-          .from("food_packages")
-          .select(`
+      const { data, error } = await supabase
+        .from("food_packages")
+        .select(`
+          *,
+          vendors (
             id,
-            package_name,
-            category,
-            price,
-            description,
-            status,
-            created_at,
-            vendors (
-              id,
-              business_name,
-              station_location,
-              license_number
-            ),
-            qr_codes (
-              id,
-              qr_token,
-              is_active
-            )
-          `)
-          .order("created_at", { ascending: false }),
-        supabase.from("vendors").select("id, business_name, station_location").eq("status", "active"),
-      ]);
+            business_name,
+            station_location,
+            license_number,
+            status
+          ),
+          qr_codes (
+            id,
+            qr_token,
+            is_active
+          )
+        `)
+        .order("created_at", { ascending: false });
 
-      if (pkgsRes.data) {
-        const normalized = pkgsRes.data.map((pkg) => {
-          const qrRecord = Array.isArray(pkg.qr_codes) ? pkg.qr_codes[0] : pkg.qr_codes;
-          return { ...pkg, qr_token: qrRecord?.qr_token || "", qr_codes: qrRecord || null };
-        });
-        setPackages(normalized);
-      }
-      if (vendsRes.data) setVendors(vendsRes.data);
+      if (error) throw error;
+
+      const normalized = (data || []).map((pkg) => {
+        const qrRecord = Array.isArray(pkg.qr_codes) ? pkg.qr_codes[0] : pkg.qr_codes;
+        return {
+          ...pkg,
+          approval_status: pkg.approval_status || "pending",
+          qr_token: qrRecord?.qr_token || "",
+          qr_record: qrRecord || null,
+        };
+      });
+      setPackages(normalized);
     } catch (err) {
       console.error("Error loading packages:", err);
+      toast.error("Failed to load vendor packages.");
     } finally {
       setLoading(false);
     }
@@ -97,244 +90,296 @@ export default function QrCodesPage() {
       loadData();
     }, 0);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleRegister(e) {
-    e.preventDefault();
-    if (!formData.vendor_id) {
-      alert("Please select an authorized catering vendor.");
-      return;
-    }
-
-    setSubmitting(true);
-    const supabase = createClient();
-    if (!supabase) {
-      alert("Configure Supabase credentials in .env.local first.");
-      setSubmitting(false);
-      return;
-    }
-
-    try {
-      const authData = await getCurrentUserProfile();
-      const qr_token = generateToken(24); // cryptographically secure 48-char hex
-
-      // 1. Insert into food_packages
-      const { data: pkgData, error: pkgErr } = await supabase
-        .from("food_packages")
-        .insert([
-          {
-            package_name: formData.package_name.trim(),
-            vendor_id: formData.vendor_id,
-            category: formData.category || "Meal",
-            description: formData.description.trim() || null,
-            price: formData.price ? parseFloat(formData.price) : null,
-            status: "active",
-          },
-        ])
-        .select()
-        .single();
-
-      if (pkgErr) throw pkgErr;
-
-      // 2. Insert into qr_codes table
-      const { error: qrErr } = await supabase.from("qr_codes").insert([
-        {
-          package_id: pkgData.id,
-          qr_token: qr_token,
-          is_active: true,
-        },
-      ]);
-
-      if (qrErr) throw qrErr;
-
-      // 3. Log to audit_logs
-      await supabase.from("audit_logs").insert([
-        {
-          user_id: authData?.user?.id || null,
-          action: "REGISTER_FOOD_PACKAGE",
-          target_entity: "food_package",
-          details: {
-            package_id: pkgData.id,
-            package_name: pkgData.package_name,
-            qr_token: qr_token,
-          },
-        },
-      ]);
-
-      setFormData({ package_name: "", vendor_id: "", category: "Meal", description: "", price: "" });
-      setModalOpen(false);
-      alert("Food package authorized and QR code token generated.");
-      loadData();
-    } catch (err) {
-      alert("Error registering package: " + err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  // Open QR Code Generator and Download Modal
-  async function handleOpenQr(pkg) {
-    setActiveQrModal(pkg);
-    setGeneratingQr(true);
-    setQrDataUrl("");
-
-    try {
-      // Build feedback portal URL
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const scanUrl = `${origin}/scan/${pkg.qr_token}`;
-
-      // Generate Data URL using qrcode package
-      const url = await QRCode.toDataURL(scanUrl, {
-        width: 320,
-        margin: 2,
-        color: {
-          dark: "#0f172a",
-          light: "#ffffff",
-        },
-      });
-
-      setQrDataUrl(url);
-    } catch (err) {
-      console.error("Error generating QR code:", err);
-      alert("Failed to render QR Code: " + err.message);
-    } finally {
-      setGeneratingQr(false);
-    }
-  }
-
-  // Toggle QR Code Active / Deactivated
-  async function handleToggleQrStatus(pkg) {
-    const qrRecord = Array.isArray(pkg.qr_codes) ? pkg.qr_codes[0] : pkg.qr_codes;
-    const currentActive = qrRecord?.is_active ?? true;
-    const newActive = !currentActive;
-
-    const confirmMsg = newActive
-      ? `Reactivate QR Code for "${pkg.package_name}"?`
-      : `Deactivate and recall QR Code for "${pkg.package_name}"? Passengers scanning this code will be warned that it is revoked.`;
-
-    if (!confirm(confirmMsg)) return;
-
+  async function handleApprovePackage(pkg) {
+    setActionLoading(true);
     const supabase = createClient();
     if (!supabase) return;
 
     try {
-      if (!qrRecord?.id) {
-        throw new Error("This package has no saved QR record. Please register it again.");
-      }
+      const authData = await getCurrentUserProfile();
+      const now = new Date().toISOString();
+
       const { error } = await supabase
-        .from("qr_codes")
-        .update({ is_active: newActive })
-        .eq("id", qrRecord.id);
+        .from("food_packages")
+        .update({
+          approval_status: "approved",
+          approved_by: authData?.user?.id || null,
+          approved_at: now,
+          rejection_reason: null,
+          updated_at: now,
+        })
+        .eq("id", pkg.id);
+
       if (error) throw error;
 
-      alert(newActive ? "QR code reactivated." : "QR code revoked and deactivated.");
+      await supabase.from("audit_logs").insert([
+        {
+          user_id: authData?.user?.id || null,
+          action: "APPROVE_FOOD_PACKAGE",
+          target_entity: "food_package",
+          details: { package_id: pkg.id, package_name: pkg.package_name, vendor_id: pkg.vendor_id },
+        },
+      ]);
+
+      toast.success(`"${pkg.package_name}" approved! Its QR code is now publicly scannable.`);
+      setInspectModalPkg(null);
       loadData();
-      if (activeQrModal?.id === pkg.id) {
-        setActiveQrModal(null);
-      }
     } catch (err) {
-      alert("Failed to update QR status: " + err.message);
+      toast.error("Failed to approve package: " + err.message);
+    } finally {
+      setActionLoading(false);
     }
   }
 
+  async function handleRejectPackage(e) {
+    e.preventDefault();
+    if (!rejectModalPkg) return;
+    setActionLoading(true);
+    const supabase = createClient();
+    if (!supabase) return;
+
+    try {
+      const authData = await getCurrentUserProfile();
+      const now = new Date().toISOString();
+
+      const { error } = await supabase
+        .from("food_packages")
+        .update({
+          approval_status: "rejected",
+          approved_by: authData?.user?.id || null,
+          approved_at: now,
+          rejection_reason: rejectionReason.trim() || "Did not meet Railway quality verification standards.",
+          updated_at: now,
+        })
+        .eq("id", rejectModalPkg.id);
+
+      if (error) throw error;
+
+      await supabase.from("audit_logs").insert([
+        {
+          user_id: authData?.user?.id || null,
+          action: "REJECT_FOOD_PACKAGE",
+          target_entity: "food_package",
+          details: {
+            package_id: rejectModalPkg.id,
+            package_name: rejectModalPkg.package_name,
+            reason: rejectionReason.trim(),
+          },
+        },
+      ]);
+
+      toast.warning(`"${rejectModalPkg.package_name}" rejected. Public QR scanning remains blocked.`);
+      setRejectModalPkg(null);
+      setRejectionReason("");
+      setInspectModalPkg(null);
+      loadData();
+    } catch (err) {
+      toast.error("Failed to reject package: " + err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleConfirmToggleQr() {
+    if (!confirmQrPkg?.qr_record?.id) return;
+    const newActive = !confirmQrPkg.qr_record.is_active;
+    setActionLoading(true);
+    const supabase = createClient();
+
+    try {
+      const authData = await getCurrentUserProfile();
+      const { error } = await supabase
+        .from("qr_codes")
+        .update({ is_active: newActive })
+        .eq("id", confirmQrPkg.qr_record.id);
+
+      if (error) throw error;
+
+      await supabase.from("audit_logs").insert([
+        {
+          user_id: authData?.user?.id || null,
+          action: newActive ? "ACTIVATE_QR_CODE" : "REVOKE_QR_CODE",
+          target_entity: "qr_code",
+          details: { package_id: confirmQrPkg.id, package_name: confirmQrPkg.package_name },
+        },
+      ]);
+
+      toast.success(newActive ? "QR code reactivated." : "QR code revoked and blocked.");
+      setConfirmQrPkg(null);
+      loadData();
+    } catch (err) {
+      toast.error("Failed to update QR status: " + err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  const filtered = packages.filter((p) => {
+    const matchesApproval = approvalFilter === "all" || p.approval_status === approvalFilter;
+    const term = search.toLowerCase();
+    const matchesSearch =
+      !term ||
+      p.package_name?.toLowerCase().includes(term) ||
+      p.vendors?.business_name?.toLowerCase().includes(term) ||
+      p.train_info?.toLowerCase().includes(term);
+    return matchesApproval && matchesSearch;
+  });
+
   return (
-    <AdminLayout title="Food Package & QR Code Management">
+    <AdminLayout title="Food Package Approvals & QR Monitoring">
       <div className={styles.container}>
-        {/* Top Controls */}
-        <div className={styles.topBar}>
-          <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
-            Authorized Food Packages: <strong>{packages.length}</strong>
-          </p>
-          <Button variant="primary" onClick={() => setModalOpen(true)}>
-            + Register Food Package & Generate QR
-          </Button>
+        <div style={{ padding: "10px 14px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "6px", fontSize: "0.84rem", color: "#1e3a8a" }}>
+          <strong>Workflow:</strong> Catering Vendors upload food packages and generate QR codes in the Vendor Portal.
+          Admin reviews and approves packages here before their QR codes become publicly scannable.
         </div>
 
-        {/* Packages Table Card */}
+        <div className={styles.topBar}>
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", flex: 1 }}>
+            <input
+              type="text"
+              placeholder="Search by food name, vendor, or train..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                flex: "1 1 240px",
+                padding: "9px 12px",
+                border: "1.5px solid var(--border)",
+                borderRadius: "8px",
+                fontSize: "0.875rem",
+              }}
+            />
+            <select
+              value={approvalFilter}
+              onChange={(e) => setApprovalFilter(e.target.value)}
+              style={{
+                padding: "9px 12px",
+                border: "1.5px solid var(--border)",
+                borderRadius: "8px",
+                background: "var(--surface)",
+                fontSize: "0.875rem",
+              }}
+            >
+              <option value="all">All Packages ({packages.length})</option>
+              <option value="pending">Pending Approval ({packages.filter((p) => p.approval_status === "pending").length})</option>
+              <option value="approved">Approved ({packages.filter((p) => p.approval_status === "approved").length})</option>
+              <option value="rejected">Rejected ({packages.filter((p) => p.approval_status === "rejected").length})</option>
+            </select>
+          </div>
+        </div>
+
         <Card>
           <CardHeader>
-            <CardTitle>Authorized Food Packages & QR Tokens</CardTitle>
+            <CardTitle>Vendor-Uploaded Packages & QR Verification Status ({filtered.length})</CardTitle>
           </CardHeader>
           <CardBody style={{ padding: 0 }}>
             {loading ? (
               <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "12px" }}>
-                {[1, 2, 3].map((i) => (
-                  <SkeletonLine key={i} height={20} />
-                ))}
+                {[1, 2, 3].map((i) => <SkeletonLine key={i} height={20} />)}
               </div>
-            ) : packages.length === 0 ? (
+            ) : filtered.length === 0 ? (
               <EmptyState
-                icon="📱"
-                title="No packages registered"
-                description="Food packages and their unique verification QR tokens will appear here once registered."
-                action={
-                  <Button variant="primary" onClick={() => setModalOpen(true)}>
-                    + Register First Package
-                  </Button>
-                }
+                icon="📦"
+                title="No packages found"
+                description="Food packages uploaded by registered Vendors will appear here for approval."
               />
             ) : (
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th>Package Name</th>
-                      <th>Catering Vendor & Station</th>
-                      <th>Category</th>
-                      <th>Price</th>
-                      <th>QR Token</th>
-                      <th>Created</th>
+                      <th>Food Package</th>
+                      <th>Catering Vendor</th>
+                      <th>Category & Price</th>
+                      <th>Approval Status</th>
+                      <th>QR Status</th>
+                      <th>Uploaded</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {packages.map((p) => {
-                      const qrRec = Array.isArray(p.qr_codes) ? p.qr_codes[0] : p.qr_codes;
-                      const isActive = qrRec?.is_active ?? (p.status === "active");
+                    {filtered.map((p) => {
+                      const qrActive = p.qr_record?.is_active ?? false;
+                      const vendorSuspended = p.vendors?.status === "suspended";
 
                       return (
                         <tr key={p.id}>
                           <td>
                             <strong style={{ display: "block" }}>{p.package_name}</strong>
-                            {!isActive && (
-                              <span style={{ fontSize: "0.72rem", color: "#dc2626", fontWeight: 700 }}>
-                                [RECALLED / DEACTIVATED]
+                            {p.train_info && (
+                              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                Train: {p.train_info}
                               </span>
                             )}
                           </td>
                           <td style={{ color: "var(--text-muted)" }}>
-                            <div>{p.vendors?.business_name ?? "Unassigned"}</div>
-                            {p.vendors?.station_location && (
-                              <span style={{ fontSize: "0.75rem" }}>
-                                📍 {p.vendors.station_location}
+                            <div>{p.vendors?.business_name ?? "—"}</div>
+                            {vendorSuspended && (
+                              <span style={{ fontSize: "0.72rem", color: "#dc2626", fontWeight: 700 }}>
+                                [VENDOR SUSPENDED]
                               </span>
                             )}
                           </td>
-                          <td>{p.category || "Meal"}</td>
-                          <td>{p.price ? `₹${p.price}` : "—"}</td>
                           <td>
-                            <span className={styles.tokenText}>
-                              {p.qr_token ? `${p.qr_token.slice(0, 16)}…` : "—"}
-                            </span>
+                            {p.category || "Meals"} · {p.price != null ? `₹${p.price}` : "—"}
+                          </td>
+                          <td>
+                            <ApprovalBadge status={p.approval_status} />
+                          </td>
+                          <td>
+                            {!p.qr_token ? (
+                              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>No QR yet</span>
+                            ) : qrActive ? (
+                              <span style={{ fontSize: "0.78rem", color: "#166534", fontWeight: 600 }}>Active Token</span>
+                            ) : (
+                              <span style={{ fontSize: "0.78rem", color: "#dc2626", fontWeight: 600 }}>Revoked</span>
+                            )}
                           </td>
                           <td style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
                             {formatDate(p.created_at)}
                           </td>
                           <td>
-                            <button
-                              className={styles.actionBtn}
-                              onClick={() => handleOpenQr(p)}
-                              style={{ background: "var(--navy)", color: "#fff", borderColor: "var(--navy)" }}
-                            >
-                              📱 View & Download QR
-                            </button>
-                            <button
-                              className={styles.actionBtn}
-                              onClick={() => handleToggleQrStatus(p)}
-                              style={{ color: isActive ? "#dc2626" : "#16a34a" }}
-                            >
-                              {isActive ? "Deactivate" : "Activate"}
-                            </button>
+                            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                              <button
+                                className={styles.actionBtn}
+                                onClick={() => setInspectModalPkg(p)}
+                              >
+                                Inspect Details
+                              </button>
+                              {p.approval_status !== "approved" && (
+                                <button
+                                  className={styles.actionBtn}
+                                  style={{ background: "#16a34a", color: "#fff", borderColor: "#16a34a" }}
+                                  onClick={() => handleApprovePackage(p)}
+                                  disabled={actionLoading}
+                                >
+                                  Approve
+                                </button>
+                              )}
+                              {p.approval_status !== "rejected" && (
+                                <button
+                                  className={styles.actionBtn}
+                                  style={{ color: "#dc2626" }}
+                                  onClick={() => {
+                                    setRejectModalPkg(p);
+                                    setRejectionReason("");
+                                  }}
+                                >
+                                  Reject
+                                </button>
+                              )}
+                              {p.qr_record && (
+                                <button
+                                  className={styles.actionBtn}
+                                  style={{ color: qrActive ? "#b45309" : "#166534" }}
+                                  onClick={() => setConfirmQrPkg(p)}
+                                >
+                                  {qrActive ? "Revoke QR" : "Enable QR"}
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -346,89 +391,86 @@ export default function QrCodesPage() {
           </CardBody>
         </Card>
 
-        {/* Register Package Modal */}
-        {modalOpen && (
-          <div className={styles.modalOverlay} onClick={() => setModalOpen(false)}>
+        {/* Inspect Package Modal */}
+        {inspectModalPkg && (
+          <div className={styles.modalOverlay} onClick={() => setInspectModalPkg(null)}>
+            <div className={styles.modal} style={{ maxWidth: "560px" }} onClick={(e) => e.stopPropagation()}>
+              <h2 className={styles.modalTitle}>{inspectModalPkg.package_name}</h2>
+              {inspectModalPkg.image_url && (
+                <img
+                  src={inspectModalPkg.image_url}
+                  alt={inspectModalPkg.package_name}
+                  style={{ width: "100%", maxHeight: "220px", objectFit: "cover", borderRadius: "8px", marginBottom: "14px", border: "1px solid var(--border)" }}
+                />
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "0.86rem", marginBottom: "16px" }}>
+                <div><strong>Vendor:</strong> {inspectModalPkg.vendors?.business_name} ({inspectModalPkg.vendors?.station_location})</div>
+                <div><strong>FSSAI License:</strong> {inspectModalPkg.fssai_license || inspectModalPkg.vendors?.license_number || "—"}</div>
+                <div><strong>Category & Price:</strong> {inspectModalPkg.category} · {inspectModalPkg.price != null ? `₹${inspectModalPkg.price}` : "—"}</div>
+                {inspectModalPkg.train_info && <div><strong>Train:</strong> {inspectModalPkg.train_info}</div>}
+                {inspectModalPkg.description && <div><strong>Description:</strong> {inspectModalPkg.description}</div>}
+                {inspectModalPkg.ingredients && <div><strong>Ingredients:</strong> {inspectModalPkg.ingredients}</div>}
+                {inspectModalPkg.prepared_at && <div><strong>Prepared At:</strong> {formatDateTime(inspectModalPkg.prepared_at)}</div>}
+                {inspectModalPkg.expires_at && <div><strong>Expiry At:</strong> {formatDateTime(inspectModalPkg.expires_at)}</div>}
+                <div><strong>Approval Status:</strong> <ApprovalBadge status={inspectModalPkg.approval_status} /></div>
+                {inspectModalPkg.rejection_reason && (
+                  <div style={{ color: "#dc2626" }}><strong>Rejection Reason:</strong> {inspectModalPkg.rejection_reason}</div>
+                )}
+              </div>
+
+              <div className={styles.modalActions}>
+                <Button variant="ghost" onClick={() => setInspectModalPkg(null)}>Close</Button>
+                {inspectModalPkg.approval_status !== "rejected" && (
+                  <Button
+                    variant="danger"
+                    onClick={() => {
+                      setRejectModalPkg(inspectModalPkg);
+                      setRejectionReason("");
+                    }}
+                  >
+                    Reject
+                  </Button>
+                )}
+                {inspectModalPkg.approval_status !== "approved" && (
+                  <Button
+                    variant="primary"
+                    loading={actionLoading}
+                    onClick={() => handleApprovePackage(inspectModalPkg)}
+                  >
+                    Approve for Public Scanning
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reject Package Modal */}
+        {rejectModalPkg && (
+          <div className={styles.modalOverlay} onClick={() => setRejectModalPkg(null)}>
             <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-              <h2 className={styles.modalTitle}>Register Food Package & Generate QR</h2>
-              <form onSubmit={handleRegister}>
+              <h2 className={styles.modalTitle}>Reject Food Package</h2>
+              <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "12px" }}>
+                Rejecting <strong>{rejectModalPkg.package_name}</strong> prevents its QR code from being scanned by passengers.
+              </p>
+              <form onSubmit={handleRejectPackage}>
                 <div className={styles.formGroup}>
-                  <label>Food Package Name *</label>
-                  <input
-                    type="text"
+                  <label>Rejection Reason *</label>
+                  <textarea
                     required
-                    value={formData.package_name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, package_name: e.target.value })
-                    }
-                    placeholder="e.g. Standard Veg Thali Box"
-                  />
-                </div>
-                <div className={styles.formGroup}>
-                  <label>Authorized Catering Vendor *</label>
-                  <select
-                    required
-                    value={formData.vendor_id}
-                    onChange={(e) =>
-                      setFormData({ ...formData, vendor_id: e.target.value })
-                    }
-                  >
-                    <option value="">Select Vendor...</option>
-                    {vendors.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.business_name} ({v.station_location})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className={styles.formGroup}>
-                  <label>Meal Category</label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) =>
-                      setFormData({ ...formData, category: e.target.value })
-                    }
-                  >
-                    <option value="Meal">Full Meal (Thali)</option>
-                    <option value="Breakfast">Breakfast / Combo</option>
-                    <option value="Snacks">Snacks & Light Refreshment</option>
-                    <option value="Beverage">Beverages / Tea / Coffee</option>
-                    <option value="Packaged">Packaged Drinking Water</option>
-                  </select>
-                </div>
-                <div className={styles.formGroup}>
-                  <label>Approved Tariff / Price (₹)</label>
-                  <input
-                    type="number"
-                    step="0.50"
-                    value={formData.price}
-                    onChange={(e) =>
-                      setFormData({ ...formData, price: e.target.value })
-                    }
-                    placeholder="e.g. 120.00"
-                  />
-                </div>
-                <div className={styles.formGroup}>
-                  <label>Package Description / Contents</label>
-                  <input
-                    type="text"
-                    value={formData.description}
-                    onChange={(e) =>
-                      setFormData({ ...formData, description: e.target.value })
-                    }
-                    placeholder="e.g. 2 Parathas, Dal Makhani, Paneer Sabzi, Rice, Pickle"
+                    rows={3}
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="e.g. Missing FSSAI compliance details or incomplete ingredient list."
+                    style={{ width: "100%", padding: "10px", border: "1.5px solid var(--border)", borderRadius: "6px" }}
                   />
                 </div>
                 <div className={styles.modalActions}>
-                  <Button
-                    variant="ghost"
-                    onClick={() => setModalOpen(false)}
-                    disabled={submitting}
-                  >
+                  <Button variant="ghost" onClick={() => setRejectModalPkg(null)} disabled={actionLoading}>
                     Cancel
                   </Button>
-                  <Button type="submit" variant="primary" loading={submitting}>
-                    Generate Token & Save
+                  <Button type="submit" variant="danger" loading={actionLoading}>
+                    Confirm Rejection
                   </Button>
                 </div>
               </form>
@@ -436,96 +478,20 @@ export default function QrCodesPage() {
           </div>
         )}
 
-        {/* Printable QR Sticker Modal */}
-        {activeQrModal && (
-          <div className={styles.modalOverlay} onClick={() => setActiveQrModal(null)}>
-            <div className={styles.modal} style={{ maxWidth: "440px" }} onClick={(e) => e.stopPropagation()}>
-              <h2 className={styles.modalTitle}>Official Packaging QR Sticker</h2>
-
-              <div className={styles.qrSticker}>
-                <div style={{ fontSize: "0.8rem", fontWeight: 700, letterSpacing: "0.05em", color: "var(--navy)" }}>
-                  INDIAN RAILWAYS QUALITY MONITORING
-                </div>
-
-                <div className={styles.qrTitle}>
-                  {activeQrModal.package_name}
-                </div>
-
-                <div className={styles.qrSub}>
-                  Vendor: <strong>{activeQrModal.vendors?.business_name}</strong>
-                  {activeQrModal.vendors?.station_location && ` (${activeQrModal.vendors.station_location})`}
-                </div>
-
-                {generatingQr ? (
-                  <div style={{ padding: "40px", color: "var(--text-muted)" }}>
-                    Generating QR Code...
-                  </div>
-                ) : qrDataUrl ? (
-                  <img
-                    src={qrDataUrl}
-                    alt="Food Package Verification QR"
-                    className={styles.qrImage}
-                  />
-                ) : null}
-
-                <div className={styles.qrTokenBox}>
-                  TOKEN: {activeQrModal.qr_token}
-                </div>
-
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                  Scan with mobile camera to rate quality & report hygiene issues.
-                </div>
-              </div>
-
-              <div className={styles.qrButtons}>
-                {qrDataUrl && (
-                  <a
-                    href={qrDataUrl}
-                    download={`${activeQrModal.package_name.replace(/\s+/g, "_")}_QR.png`}
-                    style={{
-                      display: "inline-block",
-                      padding: "8px 14px",
-                      background: "var(--navy)",
-                      color: "#fff",
-                      borderRadius: "6px",
-                      fontSize: "0.82rem",
-                      fontWeight: 600,
-                      textDecoration: "none",
-                    }}
-                  >
-                    💾 Download Printable PNG
-                  </a>
-                )}
-
-                <a
-                  href={`/scan/${activeQrModal.qr_token}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: "inline-block",
-                    padding: "8px 14px",
-                    background: "#f1f5f9",
-                    color: "var(--navy)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "6px",
-                    fontSize: "0.82rem",
-                    fontWeight: 600,
-                    textDecoration: "none",
-                  }}
-                >
-                  🔗 Open Passenger Form
-                </a>
-
-                <Button
-                  variant="ghost"
-                  onClick={() => setActiveQrModal(null)}
-                >
-                  Close
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+        <ConfirmDialog
+          open={Boolean(confirmQrPkg)}
+          title={confirmQrPkg?.qr_record?.is_active ? "Revoke QR Code?" : "Reactivate QR Code?"}
+          message={
+            confirmQrPkg?.qr_record?.is_active
+              ? `Revoking the QR code for "${confirmQrPkg?.package_name}" will block passenger scanning immediately.`
+              : `Reactivating the QR code for "${confirmQrPkg?.package_name}" will allow scanning if the package and vendor are active.`
+          }
+          confirmLabel={confirmQrPkg?.qr_record?.is_active ? "Revoke QR" : "Enable QR"}
+          variant={confirmQrPkg?.qr_record?.is_active ? "danger" : "primary"}
+          loading={actionLoading}
+          onConfirm={handleConfirmToggleQr}
+          onCancel={() => setConfirmQrPkg(null)}
+        />
       </div>
     </AdminLayout>
   );

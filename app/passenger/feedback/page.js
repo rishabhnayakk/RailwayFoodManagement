@@ -80,16 +80,16 @@ export default function PassengerFeedbackPage() {
         <Link
           href="/scan"
           style={{
-            background: "var(--green)",
+            background: "var(--navy)",
             color: "#fff",
-            padding: "9px 16px",
-            borderRadius: "8px",
-            fontSize: "0.85rem",
+            padding: "8px 14px",
+            borderRadius: "6px",
+            fontSize: "0.84rem",
             fontWeight: 600,
             textDecoration: "none",
           }}
         >
-          📱 Scan & Rate Food
+          Scan &amp; Rate Food
         </Link>
       </div>
 

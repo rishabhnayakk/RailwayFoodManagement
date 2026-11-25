@@ -1,7 +1,5 @@
 /* app/vendor/feedback/page.js
  * Vendor Passenger Feedback & Ratings View
- *
- * Shows ratings and comments submitted for the logged-in vendor's food packages.
  */
 
 "use client";
@@ -12,6 +10,7 @@ import VendorLayout from "@/components/layout/VendorLayout";
 import EmptyState from "@/components/ui/EmptyState";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentUserProfile } from "@/lib/auth";
+import { formatDateTime } from "@/lib/utils";
 import styles from "../vendor.module.css";
 
 export default function VendorFeedbackPage() {
@@ -27,7 +26,7 @@ export default function VendorFeedbackPage() {
       try {
         const account = await getCurrentUserProfile();
         if (!account?.profile || account.profile.role !== "vendor") {
-          router.replace("/auth/login");
+          router.replace("/vendor/login");
           return;
         }
 
@@ -58,7 +57,7 @@ export default function VendorFeedbackPage() {
         if (pkgIds.length > 0) {
           const { data: fbData, error: fbErr } = await supabase
             .from("feedback")
-            .select("id, package_id, rating, comment, created_at")
+            .select("id, package_id, rating, food_quality_rating, taste_rating, packaging_rating, hygiene_rating, comment, created_at")
             .in("package_id", pkgIds)
             .order("created_at", { ascending: false });
 
@@ -132,19 +131,27 @@ export default function VendorFeedbackPage() {
             <div className={styles.reviewList}>
               {filtered.map((f) => (
                 <div key={f.id} className={styles.reviewCard}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px", flexWrap: "wrap", gap: "8px" }}>
                     <span className={styles.bold} style={{ fontSize: "0.9rem" }}>
-                      📦 {f.package_name}
+                      {f.package_name}
                     </span>
                     <div className={styles.reviewStars}>
-                      {"★".repeat(f.rating)}{"☆".repeat(5 - f.rating)}
+                      {"★".repeat(f.rating)}{"☆".repeat(5 - f.rating)} ({f.rating}/5)
                     </div>
                   </div>
+                  {(f.food_quality_rating || f.taste_rating || f.packaging_rating || f.hygiene_rating) && (
+                    <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "6px" }}>
+                      {f.food_quality_rating && <span>Quality: {f.food_quality_rating}/5</span>}
+                      {f.taste_rating && <span>Taste: {f.taste_rating}/5</span>}
+                      {f.packaging_rating && <span>Packaging: {f.packaging_rating}/5</span>}
+                      {f.hygiene_rating && <span>Hygiene: {f.hygiene_rating}/5</span>}
+                    </div>
+                  )}
                   <p className={styles.reviewComment}>
                     {f.comment || "Rating submitted without written comment."}
                   </p>
                   <span className={styles.reviewDate}>
-                    {new Date(f.created_at).toLocaleString("en-IN")}
+                    {formatDateTime(f.created_at)}
                   </span>
                 </div>
               ))}

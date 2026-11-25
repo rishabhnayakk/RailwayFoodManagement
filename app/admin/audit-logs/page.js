@@ -74,7 +74,6 @@ export default function AuditLogsPage() {
               <div className={styles.logList}>
                 {logs.map((log) => (
                   <div key={log.id} className={styles.logItem}>
-                    <div className={styles.logIcon}>📝</div>
                     <div style={{ flex: 1 }}>
                       <p className={styles.logAction}>{log.action}</p>
                       <p className={styles.logMeta}>

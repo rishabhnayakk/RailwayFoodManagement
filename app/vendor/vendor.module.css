@@ -1,180 +1,161 @@
-/* app/vendor/vendor.module.css */
+/* app/vendor/vendor.module.css — Clean Vendor Catalog & Operations Styles */
 
 .loading {
   text-align: center;
-  padding: 60px 24px;
+  padding: 48px 20px;
   color: var(--text-muted);
-  font-size: 1rem;
+  font-size: 0.92rem;
 }
 
 .errorBox {
-  background: #fee2e2;
-  border: 1px solid #fca5a5;
-  color: #991b1b;
-  border-radius: 10px;
-  padding: 20px 24px;
-  margin: 24px 0;
+  background: var(--red-light);
+  border: 1px solid #fecaca;
+  color: var(--red);
+  border-radius: 6px;
+  padding: 14px 18px;
+  font-size: 0.875rem;
 }
 
 .page {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
-/* ── Identity Card ── */
+/* Compact Vendor Identity Bar */
 .identityCard {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px 24px;
+  border-radius: 8px;
+  padding: 16px 20px;
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  box-shadow: var(--shadow-sm);
-}
-
-.identityIcon {
-  font-size: 2.2rem;
-  flex-shrink: 0;
-  line-height: 1;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
 }
 
 .identityInfo {
   flex: 1;
-  min-width: 0;
+  min-width: 240px;
 }
 
 .bizName {
-  font-size: 1.3rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--text);
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 
 .bizMeta {
-  font-size: 0.85rem;
+  font-size: 0.84rem;
   color: var(--text-muted);
-  margin-bottom: 2px;
 }
 
 .statusDot {
   font-weight: 600;
 }
 
-/* ── KPI Grid ── */
-.kpiGrid {
+/* Unified Summary Bar */
+.summaryStrip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 16px;
-}
-
-.kpiCard {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 18px 20px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.15s;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
-.kpiCard:hover {
-  box-shadow: var(--shadow-md);
-}
-
-.kpiIcon {
-  font-size: 1.6rem;
-  flex-shrink: 0;
+.summaryCell {
+  padding: 12px 16px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 .kpiValue {
-  font-size: 1.5rem;
+  font-size: 1.3rem;
   font-weight: 700;
   color: var(--text);
-  line-height: 1.1;
+  line-height: 1.2;
 }
 
 .kpiLabel {
-  font-size: 0.75rem;
+  font-size: 0.74rem;
   color: var(--text-muted);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  margin-top: 2px;
 }
 
-/* ── Sections ── */
+.twoCol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
 .section {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px 24px;
-  box-shadow: var(--shadow-sm);
+  border-radius: 8px;
+  padding: 16px 18px;
 }
 
 .sectionHead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .sectionTitle {
-  font-size: 1rem;
+  font-size: 0.94rem;
   font-weight: 700;
   color: var(--text);
 }
 
 .viewAll {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   color: var(--navy);
   font-weight: 600;
-  text-decoration: none;
-  transition: opacity 0.15s;
 }
 
 .viewAll:hover {
-  opacity: 0.75;
+  text-decoration: underline;
 }
 
 .empty {
   color: var(--text-muted);
-  font-size: 0.9rem;
-  text-align: center;
-  padding: 20px 0;
+  font-size: 0.85rem;
+  padding: 18px 0;
 }
 
-/* ── Tables ── */
 .tableWrap {
   overflow-x: auto;
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid var(--border);
 }
 
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: 0.85rem;
 }
 
 .table th {
-  background: #f8fafc;
+  background: #f9fafb;
   color: var(--text-muted);
   font-weight: 600;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: 10px 14px;
+  padding: 9px 12px;
   text-align: left;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .table td {
-  padding: 10px 14px;
+  padding: 10px 12px;
   color: var(--text);
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
 
@@ -186,77 +167,69 @@
   font-weight: 600;
 }
 
-/* ── Badges ── */
 .badgeGreen {
   display: inline-block;
-  background: #dcfce7;
+  background: #f0fdf4;
   color: #166534;
+  border: 1px solid #bbf7d0;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: 4px;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: capitalize;
 }
 
 .badgeRed {
   display: inline-block;
-  background: #fee2e2;
+  background: #fef2f2;
   color: #991b1b;
+  border: 1px solid #fecaca;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: 4px;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: capitalize;
 }
 
-/* ── Review Cards ── */
 .reviewList {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .reviewCard {
-  background: #f8fafc;
+  background: #f9fafb;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px 16px;
+  border-radius: 6px;
+  padding: 12px 14px;
 }
 
 .reviewStars {
-  color: #f59e0b;
-  font-size: 1rem;
-  letter-spacing: 1px;
+  color: #b45309;
+  font-size: 0.9rem;
+  font-weight: 600;
   margin-bottom: 4px;
 }
 
 .reviewComment {
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   color: var(--text);
   margin-bottom: 4px;
 }
 
 .reviewDate {
-  font-size: 0.75rem;
+  font-size: 0.74rem;
   color: var(--text-muted);
 }
 
-/* ── Disclaimer ── */
 .disclaimer {
   font-size: 0.78rem;
   color: var(--text-muted);
-  text-align: center;
-  padding-bottom: 8px;
+  text-align: left;
 }
 
-@media (max-width: 600px) {
-  .kpiGrid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .identityCard {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
+@media (max-width: 820px) {
+  .twoCol {
+    grid-template-columns: 1fr;
   }
 }

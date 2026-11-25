@@ -1,9 +1,6 @@
 /* app/api/vendor/complaints/route.js
  * Vendor Scoped Complaints API
- *
- * Returns non-PII complaint summaries for the authenticated vendor's food packages.
- * Reporter identity (passenger_name, passenger_contact, pnr_number, train_number,
- * coach_seat, passenger_id) and private inspection findings are intentionally omitted.
+ * Returns non-PII complaint summaries and high-level inspection status for the vendor's packages.
  */
 
 import { NextResponse } from "next/server";
@@ -24,11 +21,11 @@ export async function GET() {
 
     const { data: profile } = await serverSupabase
       .from("profiles")
-      .select("role")
+      .select("role, status")
       .eq("id", user.id)
       .single();
 
-    if (profile?.role !== "vendor" && profile?.role !== "admin") {
+    if (profile?.role !== "vendor" || profile?.status === "suspended") {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
 
@@ -40,13 +37,13 @@ export async function GET() {
       return NextResponse.json({ error: "Supabase not configured." }, { status: 503 });
     }
 
-    const db = serviceKey
-      ? createClient(serviceUrl, serviceKey, {
-          auth: { autoRefreshToken: false, persistSession: false },
-        })
-      : serverSupabase;
+    const db =
+      serviceKey && !serviceKey.includes("placeholder")
+        ? createClient(serviceUrl, serviceKey, {
+            auth: { autoRefreshToken: false, persistSession: false },
+          })
+        : serverSupabase;
 
-    // 1. Resolve vendor owned by this user
     const { data: vendor, error: vendorErr } = await db
       .from("vendors")
       .select("id")
@@ -58,7 +55,6 @@ export async function GET() {
       return NextResponse.json({ complaints: [] });
     }
 
-    // 2. Get vendor's package IDs
     const { data: pkgs, error: pkgErr } = await db
       .from("food_packages")
       .select("id")
@@ -70,7 +66,6 @@ export async function GET() {
       return NextResponse.json({ complaints: [] });
     }
 
-    // 3. Fetch only non-PII complaint columns for this vendor's packages
     const { data: complaints, error: compErr } = await db
       .from("complaints")
       .select(`
@@ -80,6 +75,7 @@ export async function GET() {
         severity,
         status,
         description,
+        assigned_inspector_id,
         created_at,
         updated_at,
         food_packages (
@@ -92,7 +88,30 @@ export async function GET() {
 
     if (compErr) throw compErr;
 
-    return NextResponse.json({ complaints: complaints || [] });
+    const sanitized = (complaints || []).map((c) => {
+      let inspection_status = "Awaiting Assignment";
+      if (c.status === "resolved") inspection_status = "Resolved & Verified";
+      else if (c.status === "report_submitted") inspection_status = "Inspection Report Filed";
+      else if (c.status === "unable_to_resolve") inspection_status = "Unable to Resolve";
+      else if (c.status === "escalated") inspection_status = "Escalated";
+      else if (c.status === "in_progress") inspection_status = "Inspection In Progress";
+      else if (c.assigned_inspector_id || c.status === "assigned") inspection_status = "Inspector Assigned";
+
+      return {
+        id: c.id,
+        package_id: c.package_id,
+        issue_type: c.issue_type,
+        severity: c.severity,
+        status: c.status,
+        description: c.description,
+        created_at: c.created_at,
+        updated_at: c.updated_at,
+        food_packages: c.food_packages,
+        inspection_status,
+      };
+    });
+
+    return NextResponse.json({ complaints: sanitized });
   } catch (err) {
     console.error("Vendor complaints API error:", err);
     return NextResponse.json(

@@ -1,10 +1,11 @@
 /* app/scan/[token]/page.js
- * Verified QR Code Feedback & Complaint Submission Page
+ * Verified QR Code Passenger Form
  *
- * Verifies the food package and vendor from Supabase.
- * Allows passenger to:
- * 1. Submit star rating and written feedback.
- * 2. Submit hygiene/quality complaints with photo evidence and optional journey details.
+ * Mobile-friendly 4-section submission workflow:
+ * - Section 1: Food Details (verified package, photo, vendor, ingredients, dates)
+ * - Section 2: Food Rating (1 to 5 stars + optional dimension ratings)
+ * - Section 3: Food Feedback (comments)
+ * - Section 4: Complaint Registration (Yes / No toggle, category, description, photo, optional journey/contact)
  */
 
 "use client";
@@ -14,10 +15,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Button from "@/components/ui/Button";
 import { Input, Textarea, Select } from "@/components/ui/Input";
-import { SkeletonCard, SkeletonLine } from "@/components/ui/Skeleton";
-import { HYGIENE_ISSUES } from "@/lib/constants";
-import { createClient } from "@/lib/supabase/client";
+import { useToast } from "@/components/ui/Toast";
+import { SkeletonCard } from "@/components/ui/Skeleton";
+import { HYGIENE_ISSUES, MAX_IMAGE_BYTES, ALLOWED_MIME } from "@/lib/constants";
 import { getCurrentUserProfile } from "@/lib/auth";
+import { formatDateTime } from "@/lib/utils";
 import styles from "./feedback.module.css";
 
 const RATING_DESCRIPTIONS = {
@@ -32,37 +34,35 @@ export default function VerifiedPackageFeedbackPage({ params }) {
   const resolvedParams = use(params);
   const token = resolvedParams?.token;
   const router = useRouter();
+  const toast = useToast();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [packageData, setPackageData] = useState(null);
-  const [activeTab, setActiveTab] = useState("rating"); // "rating" | "complaint"
-
-  // User session state
   const [userProfile, setUserProfile] = useState(null);
 
-  // Rating Form State (structured 1–5 star ratings)
+  // Section 2 & 3: Rating & Feedback
   const [rating, setRating] = useState(5);
   const [foodQualityRating, setFoodQualityRating] = useState(5);
   const [tasteRating, setTasteRating] = useState(5);
   const [packagingRating, setPackagingRating] = useState(5);
   const [hygieneRating, setHygieneRating] = useState(5);
   const [comment, setComment] = useState("");
-  const [passengerName, setPassengerName] = useState("");
-  const [submittingRating, setSubmittingRating] = useState(false);
 
-  // Complaint Form State
-  const [issueType, setIssueType] = useState("foreign_object");
+  // Section 4: Optional Complaint Registration
+  const [registerComplaint, setRegisterComplaint] = useState(false);
+  const [issueType, setIssueType] = useState(HYGIENE_ISSUES[0].value);
   const [severity, setSeverity] = useState("medium");
   const [description, setDescription] = useState("");
-  const [pnrNumber, setPnrNumber] = useState("");
+  const [passengerName, setPassengerName] = useState("");
+  const [passengerContact, setPassengerContact] = useState("");
   const [trainNumber, setTrainNumber] = useState("");
+  const [pnrNumber, setPnrNumber] = useState("");
   const [coachSeat, setCoachSeat] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
-  const [submittingComplaint, setSubmittingComplaint] = useState(false);
 
-  // Submission confirmation state
+  const [submitting, setSubmitting] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
 
   useEffect(() => {
@@ -71,14 +71,13 @@ export default function VerifiedPackageFeedbackPage({ params }) {
       setError("");
 
       try {
-        // Fetch current user if logged in
-        const authData = await getCurrentUserProfile();
+        const authData = await getCurrentUserProfile().catch(() => null);
         if (authData) {
           setUserProfile(authData);
           setPassengerName(authData.profile?.full_name || "");
+          setPassengerContact(authData.profile?.phone || "");
         }
 
-        // Verify QR token with backend
         const res = await fetch(`/api/qr/verify?token=${encodeURIComponent(token)}`);
         const data = await res.json();
 
@@ -95,23 +94,19 @@ export default function VerifiedPackageFeedbackPage({ params }) {
       }
     }
 
-    if (token) {
-      verifyAndLoad();
-    }
+    if (token) verifyAndLoad();
   }, [token]);
 
-  // Handle Photo File Selection
   function handleImageChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      alert("Please select a valid image file (JPEG, PNG, WebP).");
+    if (!ALLOWED_MIME.includes(file.type)) {
+      toast.error("Please select a valid image file (JPEG, PNG, or WebP).");
       return;
     }
-
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Image size exceeds the maximum limit of 5 MB.");
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast.error("Image size exceeds the maximum limit of 5 MB.");
       return;
     }
 
@@ -119,149 +114,93 @@ export default function VerifiedPackageFeedbackPage({ params }) {
     setImagePreview(URL.createObjectURL(file));
   }
 
-  // Handle Rating Submission
-  async function handleSubmitRating(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    setSubmittingRating(true);
 
-    const supabase = createClient();
-    if (!supabase) {
-      alert("Database connection is not configured.");
-      setSubmittingRating(false);
-      return;
+    if (registerComplaint) {
+      if (!passengerName.trim()) {
+        toast.error("Please enter your name to register a complaint.");
+        return;
+      }
+      if (!description.trim()) {
+        toast.error("Please describe the issue in your complaint.");
+        return;
+      }
+      if (pnrNumber.trim() && pnrNumber.trim().length !== 10) {
+        toast.error("PNR number must be 10 digits if provided.");
+        return;
+      }
     }
 
+    setSubmitting(true);
     try {
-      const basePayload = {
-        package_id: packageData.id,
-        passenger_id: userProfile?.user?.id || null,
-        passenger_name: passengerName || "Anonymous Passenger",
-        rating: rating,
-        comment: comment || null,
-      };
+      const form = new FormData();
+      form.append("token", token);
+      form.append("rating", String(rating));
+      form.append("food_quality_rating", String(foodQualityRating));
+      form.append("taste_rating", String(tasteRating));
+      form.append("packaging_rating", String(packagingRating));
+      form.append("hygiene_rating", String(hygieneRating));
+      form.append("comment", comment.trim());
+      form.append("passenger_name", passengerName.trim());
+      form.append("register_complaint", registerComplaint ? "true" : "false");
 
-      let { error: insertErr } = await supabase.from("feedback").insert([
-        {
-          ...basePayload,
-          food_quality_rating: foodQualityRating,
-          taste_rating: tasteRating,
-          packaging_rating: packagingRating,
-          hygiene_rating: hygieneRating,
-        },
-      ]);
-
-      // Fallback for older DB instances without the structured sub-rating columns
-      if (insertErr && /column .* does not exist|schema cache/i.test(insertErr.message || "")) {
-        const retry = await supabase.from("feedback").insert([basePayload]);
-        insertErr = retry.error;
+      if (registerComplaint) {
+        form.append("issue_type", issueType);
+        form.append("severity", severity);
+        form.append("description", description.trim());
+        form.append("passenger_contact", passengerContact.trim());
+        form.append("train_number", trainNumber.trim());
+        form.append("pnr_number", pnrNumber.trim());
+        form.append("coach_seat", coachSeat.trim());
+        if (imageFile) form.append("evidence", imageFile);
       }
 
-      if (insertErr) throw insertErr;
-
-      setConfirmation({
-        type: "feedback",
-        title: "Rating & Feedback Recorded!",
-        message: "Thank you for contributing to Indian Railways food quality monitoring. Your feedback directly impacts vendor ratings.",
+      const res = await fetch("/api/scan/submit", {
+        method: "POST",
+        body: form,
       });
-    } catch (err) {
-      alert("Failed to submit feedback: " + err.message);
-    } finally {
-      setSubmittingRating(false);
-    }
-  }
+      const result = await res.json();
 
-  // Handle Complaint Submission
-  async function handleSubmitComplaint(e) {
-    e.preventDefault();
-    setSubmittingComplaint(true);
-
-    const supabase = createClient();
-    if (!supabase) {
-      alert("Database connection is not configured.");
-      setSubmittingComplaint(false);
-      return;
-    }
-
-    try {
-      let uploadedImageUrl = null;
-
-      // Upload image to Supabase Storage if attached
-      if (imageFile) {
-        const fileExt = imageFile.name.split(".").pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-        const filePath = `evidence/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("food-images")
-          .upload(filePath, imageFile);
-
-        if (!uploadError) {
-          const { data: urlData } = supabase.storage
-            .from("food-images")
-            .getPublicUrl(filePath);
-          uploadedImageUrl = urlData.publicUrl;
-        }
+      if (!res.ok) {
+        throw new Error(result.error || "Submission failed.");
       }
 
-      // Insert Complaint
-      const { data: complaintData, error: complaintErr } = await supabase
-        .from("complaints")
-        .insert([
-          {
-            package_id: packageData.id,
-            passenger_id: userProfile?.user?.id || null,
-            passenger_name: passengerName.trim(),
-            issue_type: issueType,
-            description: description,
-            severity: severity,
-            status: "submitted",
-            image_url: uploadedImageUrl,
-            pnr_number: pnrNumber.trim(),
-          },
-        ])
-        .select()
-        .single();
-
-      if (complaintErr) throw complaintErr;
-
-      // Insert Initial Status History Audit
-      await supabase.from("complaint_status_history").insert([
-        {
-          complaint_id: complaintData.id,
-          changed_by: userProfile?.user?.id || null,
-          old_status: null,
-          new_status: "submitted",
-          remarks: "Complaint filed by passenger via QR scan portal.",
-        },
-      ]);
+      toast.success(
+        registerComplaint
+          ? "Feedback & complaint registered successfully!"
+          : "Thank you! Your food rating and feedback have been recorded."
+      );
 
       setConfirmation({
-        type: "complaint",
-        refId: complaintData.id,
-        title: "Hygiene Complaint Registered",
-        message: "Your complaint has been queued for Railway Quality Authority review and assignment to a field inspector.",
+        type: registerComplaint ? "complaint" : "feedback",
+        refId: result.complaintId || null,
+        title: registerComplaint
+          ? "Feedback & Complaint Registered"
+          : "Rating & Feedback Recorded!",
+        message: registerComplaint
+          ? "Your feedback and hygiene complaint have been saved and queued for Railway Quality Administration review."
+          : "Thank you for contributing to Indian Railways food quality monitoring.",
       });
     } catch (err) {
-      alert("Failed to submit complaint: " + err.message);
+      toast.error(err.message || "Failed to submit.");
     } finally {
-      setSubmittingComplaint(false);
+      setSubmitting(false);
     }
   }
 
   return (
     <div className={styles.container}>
-      {/* Header */}
       <header className={styles.header}>
         <Link href="/scan" className={styles.backLink}>
           ← Scan Another Package
         </Link>
-        <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
-          🛡️ RailGuard Verified
+        <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>
+          RailGuard Verification
         </div>
       </header>
 
       <main className={styles.main}>
-        {/* Loading state */}
         {loading && (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <SkeletonCard />
@@ -269,14 +208,12 @@ export default function VerifiedPackageFeedbackPage({ params }) {
           </div>
         )}
 
-        {/* Error / Invalid QR state */}
         {!loading && error && (
-          <div className={styles.packageCard} style={{ textAlign: "center", padding: "48px 24px" }}>
-            <div style={{ fontSize: "3rem", marginBottom: "16px" }}>⚠️</div>
-            <h2 style={{ color: "var(--red)", fontSize: "1.3rem", fontWeight: 700, marginBottom: "8px" }}>
-              Invalid or Unrecognized QR Code
+          <div className={styles.packageCard} style={{ textAlign: "center", padding: "36px 24px" }}>
+            <h2 style={{ color: "var(--red)", fontSize: "1.15rem", fontWeight: 700, marginBottom: "8px" }}>
+              QR Verification Blocked
             </h2>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", maxWidth: "480px", margin: "0 auto 24px", lineHeight: 1.6 }}>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", maxWidth: "460px", margin: "0 auto 20px", lineHeight: 1.55 }}>
               {error}
             </p>
             <Button variant="primary" onClick={() => router.push("/scan")}>
@@ -285,32 +222,28 @@ export default function VerifiedPackageFeedbackPage({ params }) {
           </div>
         )}
 
-        {/* Confirmation Screen */}
         {!loading && confirmation && (
           <div className={styles.successBox}>
-            <div className={styles.successIcon}>
-              {confirmation.type === "complaint" ? "📋" : "⭐"}
-            </div>
-            <h2 style={{ fontSize: "1.4rem", fontWeight: 700, marginBottom: "8px" }}>
+            <h2 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "8px" }}>
               {confirmation.title}
             </h2>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.95rem", maxWidth: "480px", margin: "0 auto", lineHeight: 1.6 }}>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", maxWidth: "460px", margin: "0 auto", lineHeight: 1.55 }}>
               {confirmation.message}
             </p>
 
             {confirmation.refId && (
               <div>
                 <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "16px" }}>
-                  Your Official Tracking Reference Number:
+                  Your Unique Complaint Reference ID:
                 </p>
                 <div className={styles.refCode}>{confirmation.refId}</div>
               </div>
             )}
 
-            <div style={{ display: "flex", gap: "12px", justifyContent: "center", marginTop: "24px" }}>
+            <div style={{ display: "flex", gap: "12px", justifyContent: "center", marginTop: "24px", flexWrap: "wrap" }}>
               {userProfile ? (
                 <Button variant="primary" onClick={() => router.push("/passenger/complaints")}>
-                  Track in My Dashboard →
+                  Track Complaint Status →
                 </Button>
               ) : (
                 <Button variant="outline" onClick={() => router.push("/auth/login")}>
@@ -324,35 +257,40 @@ export default function VerifiedPackageFeedbackPage({ params }) {
           </div>
         )}
 
-        {/* Verified Package & Form View */}
         {!loading && !error && !confirmation && packageData && (
-          <>
-            {/* Package & Vendor Credentials Card */}
-            <div className={styles.packageCard}>
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            {/* SECTION 1: FOOD DETAILS */}
+            <section className={styles.packageCard}>
               <span className={styles.badgeVerified}>
                 ✓ Verified Railway Authorized Meal
               </span>
+              {packageData.image_url && (
+                <img
+                  src={packageData.image_url}
+                  alt={packageData.package_name}
+                  style={{ width: "100%", maxHeight: "240px", objectFit: "cover", borderRadius: "10px", marginBottom: "14px", border: "1px solid var(--border)" }}
+                />
+              )}
               <h1 className={styles.packageName}>{packageData.package_name}</h1>
-              {packageData.price && (
+              {packageData.price != null && (
                 <div className={styles.packagePrice}>
                   Tariff: ₹{Number(packageData.price).toFixed(2)}
                 </div>
               )}
               {packageData.description && (
-                <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", marginBottom: "16px" }}>
+                <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", marginBottom: "12px" }}>
                   {packageData.description}
                 </p>
               )}
 
-              {/* Vendor & Station Info */}
               <div className={styles.metaGrid}>
                 <div className={styles.metaItem}>
                   <strong>Licensed Vendor</strong>
                   {packageData.vendors?.business_name || "Railway Catering Contractor"}
                 </div>
                 <div className={styles.metaItem}>
-                  <strong>FSSAI / Railway License</strong>
-                  {packageData.vendors?.license_number || "Verified Contractor"}
+                  <strong>FSSAI License</strong>
+                  {packageData.fssai_license || packageData.vendors?.license_number || "Verified Contractor"}
                 </div>
                 <div className={styles.metaItem}>
                   <strong>Station / Base Kitchen</strong>
@@ -360,217 +298,263 @@ export default function VerifiedPackageFeedbackPage({ params }) {
                 </div>
                 <div className={styles.metaItem}>
                   <strong>Category</strong>
-                  {packageData.category || "Catering Service"}
+                  {packageData.category || "Meals"}
+                </div>
+                {packageData.ingredients && (
+                  <div className={styles.metaItem} style={{ gridColumn: "1 / -1" }}>
+                    <strong>Ingredients</strong>
+                    {packageData.ingredients}
+                  </div>
+                )}
+                {packageData.prepared_at && (
+                  <div className={styles.metaItem}>
+                    <strong>Prepared At</strong>
+                    {formatDateTime(packageData.prepared_at)}
+                  </div>
+                )}
+                {packageData.expires_at && (
+                  <div className={styles.metaItem}>
+                    <strong>Best Before / Expiry</strong>
+                    {formatDateTime(packageData.expires_at)}
+                  </div>
+                )}
+                {packageData.train_info && (
+                  <div className={styles.metaItem} style={{ gridColumn: "1 / -1" }}>
+                    <strong>Train Service</strong>
+                    {packageData.train_info}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* SECTION 2: FOOD RATING */}
+            <section className={styles.formCard}>
+              <h2 style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text)" }}>
+                2. Rate Food Quality (1 to 5 Stars)
+              </h2>
+
+              <div className={styles.ratingSection}>
+                <p className={styles.ratingLabel}>
+                  Overall Rating: {RATING_DESCRIPTIONS[rating]}
+                </p>
+                <div className={styles.starRow}>
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className={`${styles.starBtn} ${s <= rating ? styles.starFilled : ""}`}
+                      onClick={() => setRating(s)}
+                      title={`${s} Stars`}
+                    >
+                      ★
+                    </button>
+                  ))}
                 </div>
               </div>
-            </div>
 
-            {/* Tab Selector */}
-            <div className={styles.tabRow}>
-              <button
-                type="button"
-                className={`${styles.tabBtn} ${activeTab === "rating" ? styles.tabBtnActive : ""}`}
-                onClick={() => setActiveTab("rating")}
-              >
-                ⭐ Rate Food & Feedback
-              </button>
-              <button
-                type="button"
-                className={`${styles.tabBtn} ${activeTab === "complaint" ? styles.tabBtnActive : ""}`}
-                onClick={() => setActiveTab("complaint")}
-              >
-                ⚠️ Report Hygiene Complaint
-              </button>
-            </div>
-
-            {/* Tab 1: Structured Food Rating Form */}
-            {activeTab === "rating" && (
-              <form onSubmit={handleSubmitRating} className={styles.formCard}>
-                <div className={styles.ratingSection}>
-                  <p className={styles.ratingLabel}>
-                    Overall Rating: {RATING_DESCRIPTIONS[rating]}
-                  </p>
-                  <div className={styles.starRow}>
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        className={`${styles.starBtn} ${s <= rating ? styles.starFilled : ""}`}
-                        onClick={() => setRating(s)}
-                        title={`${s} Stars`}
-                      >
-                        ★
-                      </button>
-                    ))}
-                  </div>
-                  <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                    Click a star to set your overall rating (1 to 5)
-                  </span>
-                </div>
-
-                {/* Structured Dimension Ratings */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", padding: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--border)" }}>
-                  {[
-                    { label: "Food Quality", value: foodQualityRating, setter: setFoodQualityRating },
-                    { label: "Taste", value: tasteRating, setter: setTasteRating },
-                    { label: "Packaging", value: packagingRating, setter: setPackagingRating },
-                    { label: "Hygiene", value: hygieneRating, setter: setHygieneRating },
-                  ].map((dim) => (
-                    <div key={dim.label} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                      <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text)" }}>
-                        {dim.label} ({dim.value}/5)
-                      </span>
-                      <div style={{ display: "flex", gap: "4px" }}>
-                        {[1, 2, 3, 4, 5].map((s) => (
-                          <button
-                            key={s}
-                            type="button"
-                            onClick={() => dim.setter(s)}
-                            style={{
-                              background: "none",
-                              border: "none",
-                              fontSize: "1.15rem",
-                              color: s <= dim.value ? "#f59e0b" : "#cbd5e1",
-                              padding: 0,
-                              lineHeight: 1,
-                            }}
-                            title={`${dim.label}: ${s} stars`}
-                          >
-                            ★
-                          </button>
-                        ))}
-                      </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", padding: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--border)" }}>
+                {[
+                  { label: "Food Quality", value: foodQualityRating, setter: setFoodQualityRating },
+                  { label: "Taste", value: tasteRating, setter: setTasteRating },
+                  { label: "Packaging", value: packagingRating, setter: setPackagingRating },
+                  { label: "Hygiene", value: hygieneRating, setter: setHygieneRating },
+                ].map((dim) => (
+                  <div key={dim.label} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text)" }}>
+                      {dim.label} ({dim.value}/5)
+                    </span>
+                    <div style={{ display: "flex", gap: "4px" }}>
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => dim.setter(s)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            fontSize: "1.15rem",
+                            color: s <= dim.value ? "#f59e0b" : "#cbd5e1",
+                            padding: 0,
+                            lineHeight: 1,
+                          }}
+                        >
+                          ★
+                        </button>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
+              </div>
+            </section>
 
-                <Input
-                  label="Your Name (Optional)"
-                  placeholder="e.g. Ramesh Kumar (Leave blank for anonymous)"
-                  value={passengerName}
-                  onChange={(e) => setPassengerName(e.target.value)}
-                />
+            {/* SECTION 3: FOOD FEEDBACK */}
+            <section className={styles.formCard}>
+              <h2 style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text)" }}>
+                3. Food Feedback
+              </h2>
 
-                <Textarea
-                  label="Written Comments & Taste Feedback"
-                  placeholder="Tell us about the freshness, temperature, packaging, and presentation of the food..."
-                  rows={4}
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                />
+              <Input
+                label={registerComplaint ? "Passenger Name *" : "Your Name (Optional)"}
+                placeholder="e.g. Ramesh Kumar"
+                value={passengerName}
+                onChange={(e) => setPassengerName(e.target.value)}
+                required={registerComplaint}
+              />
 
-                <Button type="submit" variant="primary" full loading={submittingRating}>
-                  Submit Verified Rating →
-                </Button>
-              </form>
-            )}
+              <Textarea
+                label="Food Quality Feedback"
+                placeholder="Share your thoughts on taste, freshness, temperature, and packaging..."
+                rows={3}
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+              />
+            </section>
 
-            {/* Tab 2: Hygiene / Food Quality Complaint Form */}
-            {activeTab === "complaint" && (
-              <form onSubmit={handleSubmitComplaint} className={styles.formCard}>
+            {/* SECTION 4: COMPLAINT REGISTRATION */}
+            <section className={styles.formCard}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
                 <div>
-                  <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "4px" }}>
-                    File an Official Quality Violation Complaint
-                  </h3>
+                  <h2 style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text)" }}>
+                    4. Register a Complaint?
+                  </h2>
                   <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-                    Complaints are directly forwarded to the Railway Quality Control Cell for investigative action.
+                    Only enable this if you experienced a hygiene, safety, or quality issue requiring investigation.
                   </p>
                 </div>
-
-                <Input
-                  label="Customer Name"
-                  placeholder="Enter your full name"
-                  value={passengerName}
-                  onChange={(e) => setPassengerName(e.target.value)}
-                  required
-                />
-
-                <Input
-                  label="PNR Number"
-                  placeholder="Enter your 10-digit PNR"
-                  value={pnrNumber}
-                  onChange={(e) => setPnrNumber(e.target.value.split("").filter((char) => char >= "0" && char <= "9").join("").slice(0, 10))}
-                  required
-                />
-
-                <Select
-                  label="Hygiene / Defect Category"
-                  required
-                  value={issueType}
-                  onChange={(e) => setIssueType(e.target.value)}
-                >
-                  {HYGIENE_ISSUES.map((issue) => (
-                    <option key={issue.value} value={issue.value}>
-                      {issue.label}
-                    </option>
-                  ))}
-                </Select>
-
-                {/* Severity Selection */}
-                <div>
-                  <label style={{ fontSize: "0.85rem", fontWeight: 600, display: "block", marginBottom: "6px" }}>
-                    Issue Severity Level *
-                  </label>
-                  <div className={styles.severityRow}>
-                    {["low", "medium", "high", "critical"].map((lvl) => (
-                      <button
-                        key={lvl}
-                        type="button"
-                        className={`${styles.severityBtn} ${
-                          severity === lvl ? styles[`severityActive_${lvl}`] : ""
-                        }`}
-                        onClick={() => setSeverity(lvl)}
-                      >
-                        {lvl}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <Textarea
-                  label="Detailed Complaint Description"
-                  required
-                  rows={4}
-                  placeholder="Describe the issue clearly (e.g. found foreign particle in dal, meal seal was broken, food had sour taste)..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-
-                {/* Evidence Upload */}
-                <div>
-                  <label style={{ fontSize: "0.85rem", fontWeight: 600, display: "block", marginBottom: "6px" }}>
-                    Photograph Evidence (Optional but Recommended)
-                  </label>
-                  <div
-                    className={styles.uploadBox}
-                    onClick={() => document.getElementById("evidence-upload").click()}
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={!registerComplaint ? "primary" : "outline"}
+                    onClick={() => setRegisterComplaint(false)}
                   >
-                    <input
-                      id="evidence-upload"
-                      type="file"
-                      accept="image/*"
-                      style={{ display: "none" }}
-                      onChange={handleImageChange}
-                    />
-                    <div style={{ fontSize: "1.8rem", marginBottom: "6px" }}>📷</div>
-                    <p style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--navy)" }}>
-                      {imageFile ? imageFile.name : "Tap to upload or take a photo"}
-                    </p>
-                    <p style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                      JPEG, PNG or WebP up to 5 MB
-                    </p>
-                  </div>
-                  {imagePreview && (
-                    <img src={imagePreview} alt="Preview" className={styles.uploadPreview} />
-                  )}
+                    No, Feedback Only
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={registerComplaint ? "danger" : "outline"}
+                    onClick={() => setRegisterComplaint(true)}
+                  >
+                    Yes, Register Complaint
+                  </Button>
                 </div>
+              </div>
 
-                <Button type="submit" variant="danger" full loading={submittingComplaint} disabled={!passengerName.trim() || pnrNumber.length !== 10}>
-                  File Official Quality Complaint →
-                </Button>
-              </form>
-            )}
-          </>
+              {registerComplaint && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "14px", borderTop: "1px solid var(--border)", paddingTop: "14px" }}>
+                  <Select
+                    label="Complaint Category *"
+                    required
+                    value={issueType}
+                    onChange={(e) => setIssueType(e.target.value)}
+                  >
+                    {HYGIENE_ISSUES.map((issue) => (
+                      <option key={issue.value} value={issue.value}>
+                        {issue.label}
+                      </option>
+                    ))}
+                  </Select>
+
+                  <div>
+                    <label style={{ fontSize: "0.85rem", fontWeight: 600, display: "block", marginBottom: "6px" }}>
+                      Issue Severity Level *
+                    </label>
+                    <div className={styles.severityRow}>
+                      {["low", "medium", "high", "critical"].map((lvl) => (
+                        <button
+                          key={lvl}
+                          type="button"
+                          className={`${styles.severityBtn} ${
+                            severity === lvl ? styles[`severityActive_${lvl}`] : ""
+                          }`}
+                          onClick={() => setSeverity(lvl)}
+                        >
+                          {lvl}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Textarea
+                    label="Complaint Description *"
+                    required
+                    rows={4}
+                    placeholder="Describe the hygiene or quality issue in detail..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <Input
+                      label="Contact Details (Optional)"
+                      placeholder="Phone or email for updates"
+                      value={passengerContact}
+                      onChange={(e) => setPassengerContact(e.target.value)}
+                    />
+                    <Input
+                      label="Train Number (Optional)"
+                      placeholder="e.g. 12951"
+                      value={trainNumber}
+                      onChange={(e) => setTrainNumber(e.target.value)}
+                    />
+                    <Input
+                      label="PNR Number (Optional)"
+                      placeholder="10-digit PNR"
+                      value={pnrNumber}
+                      onChange={(e) =>
+                        setPnrNumber(
+                          e.target.value.split("").filter((c) => c >= "0" && c <= "9").join("").slice(0, 10)
+                        )
+                      }
+                    />
+                    <Input
+                      label="Coach / Seat Details (Optional)"
+                      placeholder="e.g. B2 / 42"
+                      value={coachSeat}
+                      onChange={(e) => setCoachSeat(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "0.85rem", fontWeight: 600, display: "block", marginBottom: "6px" }}>
+                      Photograph Evidence (Optional)
+                    </label>
+                    <div
+                      className={styles.uploadBox}
+                      onClick={() => document.getElementById("evidence-upload")?.click()}
+                    >
+                      <input
+                        id="evidence-upload"
+                        type="file"
+                        accept="image/*"
+                        style={{ display: "none" }}
+                        onChange={handleImageChange}
+                      />
+                      <p style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--navy)" }}>
+                        {imageFile ? imageFile.name : "Select or capture an image file"}
+                      </p>
+                      <p style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                        JPEG, PNG or WebP up to 5 MB
+                      </p>
+                    </div>
+                    {imagePreview && (
+                      <img src={imagePreview} alt="Preview" className={styles.uploadPreview} />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                variant={registerComplaint ? "danger" : "primary"}
+                full
+                loading={submitting}
+              >
+                {registerComplaint ? "Submit Feedback & Register Complaint →" : "Submit Food Rating & Feedback →"}
+              </Button>
+            </section>
+          </form>
         )}
       </main>
     </div>

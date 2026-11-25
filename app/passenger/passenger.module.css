@@ -1,95 +1,74 @@
-/* app/passenger/passenger.module.css */
+/* app/passenger/passenger.module.css — Clean Traveler Portal */
 
-.welcomeCard {
-  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-mid) 100%);
-  color: #ffffff;
-  border-radius: 14px;
-  padding: 28px 24px;
-  margin-bottom: 24px;
+.headerStrip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 14px;
 }
 
 .welcomeTitle {
-  font-size: 1.35rem;
+  font-size: 1.15rem;
   font-weight: 700;
-  margin-bottom: 4px;
+  color: var(--text);
+  margin-bottom: 3px;
 }
 
 .welcomeDesc {
-  font-size: 0.875rem;
-  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.84rem;
+  color: var(--text-muted);
 }
 
 .scanCta {
-  background: var(--green);
+  background: var(--navy);
   color: #ffffff;
-  padding: 12px 20px;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 0.84rem;
+  font-weight: 600;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  transition: transform 0.1s, background 0.15s;
+  gap: 6px;
 }
 
 .scanCta:hover {
-  background: #15803d;
-  transform: translateY(-1px);
+  background: var(--navy-mid);
 }
 
-.kpiRow {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.kpiCard {
+.summaryLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  margin-bottom: 18px;
+  padding: 10px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 18px 20px;
-  box-shadow: var(--shadow-sm);
+  border-radius: 6px;
 }
 
-.kpiIcon {
-  font-size: 1.4rem;
-  margin-bottom: 6px;
-}
-
-.kpiNumber {
-  font-size: 1.6rem;
-  font-weight: 800;
-  color: var(--navy);
-  line-height: 1.2;
-}
-
-.kpiLabel {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-top: 2px;
+.summaryLine strong {
+  color: var(--text);
 }
 
 /* Complaints list & timeline */
 .complaintItem {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 16px;
-  box-shadow: var(--shadow-sm);
+  border-radius: 8px;
+  padding: 18px;
+  margin-bottom: 14px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .complaintHead {
@@ -101,7 +80,7 @@
 }
 
 .pkgName {
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--text);
   margin-bottom: 2px;
@@ -112,16 +91,14 @@
   color: var(--text-muted);
 }
 
-/* 6-Stage Progress Stepper */
 .stepper {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 8px;
-  background: #f8fafc;
-  border-radius: 10px;
+  padding: 12px 8px;
+  background: #f9fafb;
+  border-radius: 6px;
   border: 1px solid var(--border);
-  position: relative;
   overflow-x: auto;
 }
 
@@ -131,25 +108,22 @@
   align-items: center;
   text-align: center;
   flex: 1;
-  min-width: 90px;
-  position: relative;
-  z-index: 2;
+  min-width: 86px;
 }
 
 .stepCircle {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--surface);
-  border: 2px solid var(--border);
+  border: 1.5px solid var(--border);
   color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  margin-bottom: 6px;
-  transition: all 0.2s;
+  margin-bottom: 5px;
 }
 
 .stepActive .stepCircle {

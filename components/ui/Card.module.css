@@ -3,13 +3,13 @@
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 
 .header {
-  padding: 16px 20px;
+  padding: 13px 18px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -18,18 +18,18 @@
 }
 
 .title {
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   font-weight: 600;
   color: var(--text);
   margin: 0;
 }
 
 .body {
-  padding: 20px;
+  padding: 18px;
 }
 
 .footer {
-  padding: 12px 20px;
+  padding: 11px 18px;
   border-top: 1px solid var(--border);
   background: #f9fafb;
 }

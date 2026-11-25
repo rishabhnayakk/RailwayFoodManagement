@@ -1,10 +1,8 @@
 /* app/admin/vendors/page.js
  * Vendor Management Portal
  *
- * Railway quality administration monitors all licensed catering & food contractors
- * and can provision vendor portal login credentials linked via owner_user_id.
- * Connects to Supabase `vendors` table. Shows real empty states.
- * NO mock records. NO external icon library.
+ * Admin creates catering vendor records and vendor portal accounts,
+ * activates/suspends vendor accounts, and monitors vendor packages.
  */
 
 "use client";
@@ -13,20 +11,25 @@ import { useState, useEffect } from "react";
 import AdminLayout from "@/components/layout/AdminLayout";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/Toast";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentUserProfile } from "@/lib/auth";
 import styles from "./vendors.module.css";
 
 export default function VendorsPage() {
+  const toast = useToast();
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [vendorPackages, setVendorPackages] = useState([]);
   const [packagesLoading, setPackagesLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [confirmVendor, setConfirmVendor] = useState(null);
 
   const [formData, setFormData] = useState({
     business_name: "",
@@ -35,10 +38,12 @@ export default function VendorsPage() {
     contact_name: "",
     phone: "",
     email: "",
+    create_login: true,
+    login_password: "",
   });
   const [submitting, setSubmitting] = useState(false);
 
-  // Vendor portal login provisioning state
+  // Vendor portal login provisioning state (for existing unlinked vendors)
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [creatingLogin, setCreatingLogin] = useState(false);
@@ -58,7 +63,8 @@ export default function VendorsPage() {
           *,
           food_packages (
             id,
-            package_name
+            package_name,
+            approval_status
           )
         `)
         .order("created_at", { ascending: false });
@@ -68,6 +74,7 @@ export default function VendorsPage() {
       }
     } catch (err) {
       console.error("Error loading vendors:", err);
+      toast.error("Failed to load vendors.");
     } finally {
       setLoading(false);
     }
@@ -78,14 +85,26 @@ export default function VendorsPage() {
       loadVendors();
     }, 0);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleCreateVendor(e) {
     e.preventDefault();
+    if (formData.create_login) {
+      if (!formData.email.trim()) {
+        toast.error("Vendor email is required to create portal login credentials.");
+        return;
+      }
+      if (!formData.login_password || formData.login_password.length < 6) {
+        toast.error("Initial password must be at least 6 characters.");
+        return;
+      }
+    }
+
     setSubmitting(true);
     const supabase = createClient();
     if (!supabase) {
-      alert("Please configure Supabase credentials in .env.local first.");
+      toast.error("Please configure Supabase credentials in .env.local first.");
       setSubmitting(false);
       return;
     }
@@ -93,34 +112,62 @@ export default function VendorsPage() {
     try {
       const authData = await getCurrentUserProfile();
 
-      const { data, error } = await supabase.from("vendors").insert([
-        {
-          business_name: formData.business_name.trim(),
-          license_number: formData.license_number.trim(),
-          station_location: formData.station_location.trim(),
-          contact_name: formData.contact_name.trim() || null,
-          phone: formData.phone.trim() || null,
-          email: formData.email.trim() || null,
-          status: "active",
-        },
-      ]).select().single();
+      const { data: createdVendor, error } = await supabase
+        .from("vendors")
+        .insert([
+          {
+            business_name: formData.business_name.trim(),
+            license_number: formData.license_number.trim(),
+            station_location: formData.station_location.trim(),
+            contact_name: formData.contact_name.trim() || null,
+            phone: formData.phone.trim() || null,
+            email: formData.email.trim() || null,
+            status: "active",
+          },
+        ])
+        .select()
+        .single();
 
       if (error) throw error;
 
-      // Log action in audit_logs
       await supabase.from("audit_logs").insert([
         {
           user_id: authData?.user?.id || null,
           action: "REGISTER_VENDOR",
           target_entity: "vendor",
           details: {
-            vendor_id: data.id,
-            business_name: data.business_name,
-            license_number: data.license_number,
-            station_location: data.station_location,
+            vendor_id: createdVendor.id,
+            business_name: createdVendor.business_name,
+            license_number: createdVendor.license_number,
+            station_location: createdVendor.station_location,
           },
         },
       ]);
+
+      if (formData.create_login) {
+        const res = await fetch("/api/admin/create-account", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: formData.email.trim(),
+            password: formData.login_password,
+            full_name: formData.contact_name.trim() || formData.business_name.trim(),
+            phone: formData.phone.trim() || null,
+            role: "vendor",
+            vendor_id: createdVendor.id,
+          }),
+        });
+        const accData = await res.json();
+        if (!res.ok) {
+          toast.warning(
+            `Vendor created, but portal login setup failed: ${accData.error || "Unknown error"}. You can provision login from the vendor details modal.`
+          );
+        } else {
+          toast.success("Vendor registered and portal login account created.");
+        }
+      } else {
+        toast.success("Catering vendor registered successfully.");
+      }
 
       setFormData({
         business_name: "",
@@ -129,67 +176,50 @@ export default function VendorsPage() {
         contact_name: "",
         phone: "",
         email: "",
+        create_login: true,
+        login_password: "",
       });
       setModalOpen(false);
-      alert("Catering contractor registered successfully.");
       loadVendors();
     } catch (err) {
-      alert("Error adding vendor: " + err.message);
+      toast.error("Error adding vendor: " + err.message);
     } finally {
       setSubmitting(false);
     }
   }
 
-  // Toggle Vendor Active / Suspended status
-  async function handleToggleStatus(vendor) {
-    const newStatus = vendor.status === "active" ? "suspended" : "active";
-    const confirmMsg =
-      newStatus === "suspended"
-        ? `Are you sure you want to suspend "${vendor.business_name}"? Suspended vendors cannot be assigned to new packages.`
-        : `Reactivate vendor "${vendor.business_name}"?`;
-
-    if (!confirm(confirmMsg)) return;
-
+  async function confirmToggleStatus() {
+    if (!confirmVendor) return;
+    const nextStatus = confirmVendor.status === "active" ? "suspended" : "active";
     setActionLoading(true);
-    const supabase = createClient();
-    if (!supabase) return;
 
     try {
-      const authData = await getCurrentUserProfile();
+      const res = await fetch("/api/admin/toggle-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entityType: "vendor",
+          entityId: confirmVendor.id,
+          nextStatus,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update vendor status.");
 
-      const { error } = await supabase
-        .from("vendors")
-        .update({
-          status: newStatus,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", vendor.id);
-
-      if (error) throw error;
-
-      // Audit log
-      await supabase.from("audit_logs").insert([
-        {
-          user_id: authData?.user?.id || null,
-          action: newStatus === "suspended" ? "SUSPEND_VENDOR" : "ACTIVATE_VENDOR",
-          target_entity: "vendor",
-          details: {
-            vendor_id: vendor.id,
-            business_name: vendor.business_name,
-            new_status: newStatus,
-          },
-        },
-      ]);
-
+      toast.success(
+        nextStatus === "suspended"
+          ? `Vendor "${confirmVendor.business_name}" suspended. Their portal login and QR codes are now disabled.`
+          : `Vendor "${confirmVendor.business_name}" reactivated.`
+      );
+      setConfirmVendor(null);
       loadVendors();
     } catch (err) {
-      alert("Error updating status: " + err.message);
+      toast.error(err.message);
     } finally {
       setActionLoading(false);
     }
   }
 
-  // View vendor details & packages
   async function handleViewDetails(vendor) {
     setSelectedVendor(vendor);
     setLoginEmail(vendor.email || "");
@@ -203,8 +233,6 @@ export default function VendorsPage() {
     }
 
     try {
-      // food_packages does NOT have a qr_token column; it lives in the qr_codes table.
-      // We join qr_codes to get the token for each package.
       const { data, error } = await supabase
         .from("food_packages")
         .select(`
@@ -213,6 +241,7 @@ export default function VendorsPage() {
           category,
           price,
           status,
+          approval_status,
           created_at,
           qr_codes (
             qr_token,
@@ -222,13 +251,10 @@ export default function VendorsPage() {
         .eq("vendor_id", vendor.id)
         .order("created_at", { ascending: false });
 
-      if (!error && data) {
-        setVendorPackages(data);
-      } else {
-        setVendorPackages([]);
-      }
+      setVendorPackages(!error && data ? data : []);
     } catch (err) {
       console.error("Error fetching packages:", err);
+      setVendorPackages([]);
     } finally {
       setPackagesLoading(false);
     }
@@ -236,33 +262,49 @@ export default function VendorsPage() {
 
   const filtered = vendors.filter((v) => {
     const term = search.toLowerCase();
-    return (
+    const matchesSearch =
       !term ||
       v.business_name?.toLowerCase().includes(term) ||
       v.license_number?.toLowerCase().includes(term) ||
       v.station_location?.toLowerCase().includes(term) ||
-      v.contact_name?.toLowerCase().includes(term)
-    );
+      v.contact_name?.toLowerCase().includes(term);
+    const matchesStatus = statusFilter === "all" || v.status === statusFilter;
+    return matchesSearch && matchesStatus;
   });
 
   return (
-    <AdminLayout title="Food Vendor & Contractor Management">
+    <AdminLayout title="Vendor Account Management">
       <div className={styles.container}>
-        {/* Top Control Bar */}
         <div className={styles.topBar}>
-          <input
-            type="text"
-            placeholder="Search vendors by name, station, license..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className={styles.search}
-          />
+          <div style={{ display: "flex", gap: "10px", flex: 1, flexWrap: "wrap" }}>
+            <input
+              type="text"
+              placeholder="Search vendors by name, station, license..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={styles.search}
+            />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                padding: "9px 12px",
+                border: "1.5px solid var(--border)",
+                borderRadius: "8px",
+                background: "var(--surface)",
+                fontSize: "0.875rem",
+              }}
+            >
+              <option value="all">All Vendors ({vendors.length})</option>
+              <option value="active">Active ({vendors.filter((v) => v.status === "active").length})</option>
+              <option value="suspended">Suspended ({vendors.filter((v) => v.status === "suspended").length})</option>
+            </select>
+          </div>
           <Button variant="primary" onClick={() => setModalOpen(true)}>
-            + Register Catering Vendor
+            + Create Vendor Account
           </Button>
         </div>
 
-        {/* Vendors Grid */}
         {loading ? (
           <div className={styles.grid}>
             {[1, 2, 3].map((i) => (
@@ -275,12 +317,12 @@ export default function VendorsPage() {
             title="No vendors found"
             description={
               vendors.length === 0
-                ? "No food vendors have been registered yet. Add authorized railway catering contractors to link with food packages and quality audits."
-                : "No registered vendors match your search term."
+                ? "No catering vendors have been registered yet. Create a Vendor account so they can upload food packages and generate QR codes."
+                : "No registered vendors match your search or filter."
             }
             action={
               <Button variant="primary" onClick={() => setModalOpen(true)}>
-                + Register First Vendor
+                + Create First Vendor Account
               </Button>
             }
           />
@@ -293,29 +335,28 @@ export default function VendorsPage() {
                     <h3 className={styles.vendorName}>{v.business_name}</h3>
                     <span className={styles.license}>Lic: {v.license_number || "—"}</span>
                   </div>
-                  <span
-                    className={`${styles.statusPill} ${
-                      styles[v.status] || styles.active
-                    }`}
-                  >
+                  <span className={`${styles.statusPill} ${styles[v.status] || styles.active}`}>
                     {v.status || "active"}
                   </span>
                 </div>
 
                 <div className={styles.contactRow}>
-                  <span>📍 <strong>Station:</strong> {v.station_location || "Not specified"}</span>
-                  {v.contact_name && <span>👤 Contact: {v.contact_name}</span>}
-                  {v.phone && <span>📞 Phone: {v.phone}</span>}
-                  {v.email && <span>✉️ Email: {v.email}</span>}
-                  <span>📦 Authorized Packages: <strong>{v.food_packages?.length || 0}</strong></span>
+                  <span><strong>Station:</strong> {v.station_location || "Not specified"}</span>
+                  {v.contact_name && <span>Contact: {v.contact_name}</span>}
+                  {v.phone && <span>Phone: {v.phone}</span>}
+                  {v.email && <span>Email: {v.email}</span>}
+                  <span>Uploaded Packages: <strong>{v.food_packages?.length || 0}</strong></span>
+                  <span>
+                    Portal Access:{" "}
+                    <strong style={{ color: v.owner_user_id ? "#166534" : "#b45309" }}>
+                      {v.owner_user_id ? "Provisioned" : "Not provisioned"}
+                    </strong>
+                  </span>
                 </div>
 
                 <div className={styles.cardFooter}>
-                  <button
-                    className={styles.footerBtn}
-                    onClick={() => handleViewDetails(v)}
-                  >
-                    Packages & Profile →
+                  <button className={styles.footerBtn} onClick={() => handleViewDetails(v)}>
+                    Packages & Account →
                   </button>
 
                   <button
@@ -324,10 +365,10 @@ export default function VendorsPage() {
                       color: v.status === "active" ? "#dc2626" : "#16a34a",
                       fontSize: "0.75rem",
                     }}
-                    onClick={() => handleToggleStatus(v)}
+                    onClick={() => setConfirmVendor(v)}
                     disabled={actionLoading}
                   >
-                    {v.status === "active" ? "Suspend" : "Reactivate"}
+                    {v.status === "active" ? "Suspend Vendor" : "Activate Vendor"}
                   </button>
                 </div>
               </div>
@@ -335,11 +376,11 @@ export default function VendorsPage() {
           </div>
         )}
 
-        {/* Modal: Add Vendor */}
+        {/* Modal: Create Vendor Account */}
         {modalOpen && (
           <div className={styles.modalOverlay} onClick={() => setModalOpen(false)}>
             <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-              <h2 className={styles.modalTitle}>Register Railway Food Vendor</h2>
+              <h2 className={styles.modalTitle}>Create Catering Vendor Account</h2>
               <form onSubmit={handleCreateVendor}>
                 <div className={styles.formGroup}>
                   <label>Catering Agency / Business Name *</label>
@@ -347,9 +388,7 @@ export default function VendorsPage() {
                     type="text"
                     required
                     value={formData.business_name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, business_name: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, business_name: e.target.value })}
                     placeholder="e.g. Northern Railways Catering Services"
                   />
                 </div>
@@ -359,9 +398,7 @@ export default function VendorsPage() {
                     type="text"
                     required
                     value={formData.station_location}
-                    onChange={(e) =>
-                      setFormData({ ...formData, station_location: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, station_location: e.target.value })}
                     placeholder="e.g. New Delhi Railway Station (NDLS)"
                   />
                 </div>
@@ -371,9 +408,7 @@ export default function VendorsPage() {
                     type="text"
                     required
                     value={formData.license_number}
-                    onChange={(e) =>
-                      setFormData({ ...formData, license_number: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
                     placeholder="e.g. FSSAI-2025-09871"
                   />
                 </div>
@@ -382,9 +417,7 @@ export default function VendorsPage() {
                   <input
                     type="text"
                     value={formData.contact_name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, contact_name: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })}
                     placeholder="e.g. Rajesh Kumar"
                   />
                 </div>
@@ -393,33 +426,52 @@ export default function VendorsPage() {
                   <input
                     type="tel"
                     value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     placeholder="+91 98765 43210"
                   />
                 </div>
                 <div className={styles.formGroup}>
-                  <label>Email Address</label>
+                  <label>Vendor Email Address {formData.create_login ? "*" : ""}</label>
                   <input
                     type="email"
+                    required={formData.create_login}
                     value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="vendor@pantryservices.com"
                   />
                 </div>
+
+                <div style={{ padding: "10px 12px", background: "#f8fafc", border: "1px solid var(--border)", borderRadius: "8px", marginBottom: "14px" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", fontWeight: 600, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={formData.create_login}
+                      onChange={(e) => setFormData({ ...formData, create_login: e.target.checked })}
+                    />
+                    Also create Vendor Portal login credentials now
+                  </label>
+
+                  {formData.create_login && (
+                    <div className={styles.formGroup} style={{ marginTop: "10px", marginBottom: 0 }}>
+                      <label>Initial Portal Password * (Min 6 chars)</label>
+                      <input
+                        type="password"
+                        required
+                        minLength={6}
+                        value={formData.login_password}
+                        onChange={(e) => setFormData({ ...formData, login_password: e.target.value })}
+                        placeholder="••••••••"
+                      />
+                    </div>
+                  )}
+                </div>
+
                 <div className={styles.modalActions}>
-                  <Button
-                    variant="ghost"
-                    onClick={() => setModalOpen(false)}
-                    disabled={submitting}
-                  >
+                  <Button variant="ghost" onClick={() => setModalOpen(false)} disabled={submitting}>
                     Cancel
                   </Button>
                   <Button type="submit" variant="primary" loading={submitting}>
-                    Save Vendor
+                    Create Vendor Account
                   </Button>
                 </div>
               </form>
@@ -430,44 +482,54 @@ export default function VendorsPage() {
         {/* Modal: View Vendor Details & Packages */}
         {selectedVendor && (
           <div className={styles.modalOverlay} onClick={() => setSelectedVendor(null)}>
-            <div className={styles.modal} style={{ maxWidth: "600px" }} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modal} style={{ maxWidth: "620px" }} onClick={(e) => e.stopPropagation()}>
               <h2 className={styles.modalTitle}>{selectedVendor.business_name}</h2>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "0.85rem", marginBottom: "16px" }}>
-                <div>📍 <strong>Station Base:</strong> {selectedVendor.station_location}</div>
-                <div>📜 <strong>License:</strong> {selectedVendor.license_number}</div>
-                {selectedVendor.contact_name && <div>👤 <strong>Contact:</strong> {selectedVendor.contact_name}</div>}
-                {selectedVendor.phone && <div>📞 <strong>Phone:</strong> {selectedVendor.phone}</div>}
-                {selectedVendor.email && <div>✉️ <strong>Email:</strong> {selectedVendor.email}</div>}
-                <div>Status: <strong style={{ color: selectedVendor.status === "active" ? "#16a34a" : "#dc2626" }}>{selectedVendor.status?.toUpperCase()}</strong></div>
+                <div><strong>Station Base:</strong> {selectedVendor.station_location}</div>
+                <div><strong>License:</strong> {selectedVendor.license_number}</div>
+                {selectedVendor.contact_name && <div><strong>Contact:</strong> {selectedVendor.contact_name}</div>}
+                {selectedVendor.phone && <div><strong>Phone:</strong> {selectedVendor.phone}</div>}
+                {selectedVendor.email && <div><strong>Email:</strong> {selectedVendor.email}</div>}
+                <div>
+                  Status:{" "}
+                  <strong style={{ color: selectedVendor.status === "active" ? "#16a34a" : "#dc2626" }}>
+                    {selectedVendor.status?.toUpperCase()}
+                  </strong>
+                </div>
               </div>
 
               <h3 style={{ fontSize: "0.95rem", fontWeight: 700, borderTop: "1px solid var(--border)", paddingTop: "12px", marginBottom: "10px" }}>
-                Authorized Food Packages ({vendorPackages.length})
+                Uploaded Food Packages ({vendorPackages.length})
               </h3>
 
               {packagesLoading ? (
                 <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Loading food packages...</p>
               ) : vendorPackages.length === 0 ? (
                 <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", fontStyle: "italic" }}>
-                  No food packages registered under this vendor yet. Register a package in QR Packages to link it.
+                  This vendor has not uploaded any food packages yet.
                 </p>
               ) : (
                 <div style={{ maxHeight: "200px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {vendorPackages.map((pkg) => (
-                    <div key={pkg.id} style={{ padding: "8px 12px", background: "#f8fafc", border: "1px solid var(--border)", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.82rem" }}>
-                      <div>
-                        <strong>{pkg.package_name}</strong> ({pkg.category || "Meal"})
-                        {pkg.price && <span style={{ marginLeft: "6px", color: "var(--text-muted)" }}>• ₹{pkg.price}</span>}
+                  {vendorPackages.map((pkg) => {
+                    const qr = Array.isArray(pkg.qr_codes) ? pkg.qr_codes[0] : pkg.qr_codes;
+                    return (
+                      <div key={pkg.id} style={{ padding: "8px 12px", background: "#f8fafc", border: "1px solid var(--border)", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.82rem" }}>
+                        <div>
+                          <strong>{pkg.package_name}</strong> ({pkg.category || "Meal"})
+                          {pkg.price != null && <span style={{ marginLeft: "6px", color: "var(--text-muted)" }}>• ₹{pkg.price}</span>}
+                          <span style={{ marginLeft: "8px", fontSize: "0.75rem", fontWeight: 600, color: pkg.approval_status === "approved" ? "#166534" : pkg.approval_status === "rejected" ? "#991b1b" : "#92400e" }}>
+                            [{pkg.approval_status || "pending"}]
+                          </span>
+                        </div>
+                        <span style={{ fontFamily: "monospace", fontSize: "0.75rem", color: "var(--navy)" }}>
+                          {qr?.qr_token ? `${qr.qr_token.slice(0, 8)}…` : "No QR"}
+                        </span>
                       </div>
-                      <span style={{ fontFamily: "monospace", fontSize: "0.75rem", color: "var(--navy)" }}>
-                        {pkg.qr_codes?.[0]?.qr_token ? `${pkg.qr_codes[0].qr_token.slice(0, 8)}…` : "—"}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
-              {/* Vendor Portal Access Provisioning */}
               <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px", marginTop: "14px" }}>
                 <h3 style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: "8px" }}>
                   Vendor Portal Login Access
@@ -481,7 +543,7 @@ export default function VendorsPage() {
                     onSubmit={async (e) => {
                       e.preventDefault();
                       if (!loginPassword || loginPassword.length < 6) {
-                        alert("Password must be at least 6 characters.");
+                        toast.error("Password must be at least 6 characters.");
                         return;
                       }
                       setCreatingLogin(true);
@@ -500,12 +562,12 @@ export default function VendorsPage() {
                         });
                         const data = await res.json();
                         if (!res.ok) throw new Error(data.error || "Failed to provision vendor login.");
-                        alert(`Vendor login created for "${selectedVendor.business_name}". They can sign in at /auth/login.`);
+                        toast.success(`Vendor login created for "${selectedVendor.business_name}".`);
                         setSelectedVendor({ ...selectedVendor, owner_user_id: data.userId });
                         setLoginPassword("");
                         loadVendors();
                       } catch (err) {
-                        alert("Error creating vendor login: " + err.message);
+                        toast.error("Error creating vendor login: " + err.message);
                       } finally {
                         setCreatingLogin(false);
                       }
@@ -544,6 +606,21 @@ export default function VendorsPage() {
             </div>
           </div>
         )}
+
+        <ConfirmDialog
+          open={Boolean(confirmVendor)}
+          title={confirmVendor?.status === "active" ? "Suspend Vendor Account?" : "Reactivate Vendor Account?"}
+          message={
+            confirmVendor?.status === "active"
+              ? `Suspending "${confirmVendor?.business_name}" will immediately disable their portal login and block all their active food packages and QR codes from public scanning.`
+              : `Reactivating "${confirmVendor?.business_name}" will restore their vendor portal login and allow approved packages to be scanned.`
+          }
+          confirmLabel={confirmVendor?.status === "active" ? "Suspend Vendor" : "Activate Vendor"}
+          variant={confirmVendor?.status === "active" ? "danger" : "primary"}
+          loading={actionLoading}
+          onConfirm={confirmToggleStatus}
+          onCancel={() => setConfirmVendor(null)}
+        />
       </div>
     </AdminLayout>
   );

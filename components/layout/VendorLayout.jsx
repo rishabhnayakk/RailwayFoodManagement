@@ -1,67 +1,82 @@
-/* components/layout/VendorLayout.jsx
- * Navigation Shell for Vendor (Catering Partner) Portal.
- *
- * Mirrors the structure of InspectorLayout — dark sidebar, main content area.
- * Strictly limits access to the authenticated vendor's own data only.
- */
+/* components/layout/VendorLayout.jsx */
 
 "use client";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { VENDOR_NAV } from "@/lib/constants";
+import { createClient } from "@/lib/supabase/client";
 import { getCurrentUserProfile, signOutUser } from "@/lib/auth";
+import NavIcon from "@/components/ui/NavIcon";
 import styles from "./VendorLayout.module.css";
-
-const VENDOR_NAV = [
-  { href: "/vendor",           icon: "🏠", label: "Dashboard"    },
-  { href: "/vendor/packages",  icon: "📦", label: "My Packages"  },
-  { href: "/vendor/feedback",  icon: "⭐", label: "Feedback"     },
-  { href: "/vendor/complaints", icon: "⚠️", label: "Complaints"  },
-];
 
 export default function VendorLayout({ children, title = "Vendor Portal" }) {
   const pathname = usePathname();
-  const router   = useRouter();
+  const router = useRouter();
   const [profile, setProfile] = useState(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
+    let active = true;
     async function checkVendorAuth() {
-      const authData = await getCurrentUserProfile();
-      if (!authData?.user) {
-        router.push("/auth/login");
+      const supabase = createClient();
+      if (!supabase) {
+        if (active) {
+          setAuthorized(true);
+          setChecking(false);
+        }
         return;
       }
-      if (authData.profile?.role !== "vendor" && authData.profile?.role !== "admin") {
-        router.push("/auth/login");
-        return;
+
+      try {
+        const authData = await getCurrentUserProfile();
+        if (!authData?.user || authData.profile?.role !== "vendor") {
+          router.replace("/vendor/login");
+          return;
+        }
+        if (active) {
+          setProfile(authData.profile);
+          setAuthorized(true);
+        }
+      } catch {
+        router.replace("/vendor/login");
+      } finally {
+        if (active) setChecking(false);
       }
-      setProfile(authData.profile);
     }
     checkVendorAuth();
+    return () => {
+      active = false;
+    };
   }, [router]);
 
   async function handleSignOut() {
     await signOutUser();
-    router.push("/auth/login");
+    router.push("/vendor/login");
+  }
+
+  if (checking || !authorized) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: "0.9rem" }}>
+        Verifying Vendor session…
+      </div>
+    );
   }
 
   return (
     <div className={styles.shell}>
-
-      {/* Mobile overlay */}
       {mobileOpen && (
         <div className={styles.overlay} onClick={() => setMobileOpen(false)} />
       )}
 
-      {/* Sidebar */}
       <aside className={`${styles.sidebar} ${mobileOpen ? styles.sidebarOpen : ""}`}>
         <div className={styles.logo}>
-          <div className={styles.logoIcon}>🏪</div>
           <div>
             <div className={styles.logoName}>RailGuard</div>
-            <div className={styles.logoSub}>Catering Partner Portal</div>
+            <div className={styles.logoSub}>Vendor Portal</div>
           </div>
         </div>
 
@@ -77,7 +92,7 @@ export default function VendorLayout({ children, title = "Vendor Portal" }) {
                 onClick={() => setMobileOpen(false)}
                 className={`${styles.navLink} ${isActive ? styles.navLinkActive : ""}`}
               >
-                <span>{item.icon}</span>
+                <NavIcon name={item.icon} />
                 <span>{item.label}</span>
               </Link>
             );
@@ -85,18 +100,16 @@ export default function VendorLayout({ children, title = "Vendor Portal" }) {
         </nav>
 
         <div className={styles.footer}>
-          <button onClick={handleSignOut} className={styles.signOut}>
-            <span>🚪</span>
+          <button type="button" onClick={handleSignOut} className={styles.signOut}>
+            <NavIcon name="signout" />
             <span>Sign Out</span>
           </button>
         </div>
       </aside>
 
-      {/* Main Area */}
       <div className={styles.mainArea}>
         <header className={styles.header}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            {/* Hamburger for mobile */}
             <button
               className={styles.menuBtn}
               onClick={() => setMobileOpen(true)}
@@ -107,21 +120,10 @@ export default function VendorLayout({ children, title = "Vendor Portal" }) {
             <h1 className={styles.title}>{title}</h1>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text)" }}>
-              {profile?.full_name || "Catering Partner"}
+            <span style={{ fontSize: "0.84rem", fontWeight: 500, color: "var(--text-muted)" }}>
+              {profile?.full_name || "Vendor Account"}
             </span>
-            <span
-              style={{
-                fontSize: "0.72rem",
-                background: "#dcfce7",
-                color: "#166534",
-                padding: "3px 8px",
-                borderRadius: "999px",
-                fontWeight: 700,
-              }}
-            >
-              VENDOR
-            </span>
+            <span className={styles.roleTag}>VENDOR</span>
           </div>
         </header>
 

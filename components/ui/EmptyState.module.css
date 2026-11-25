@@ -5,28 +5,24 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
+  padding: 36px 20px;
   text-align: center;
   color: var(--text-muted);
 }
 
-.icon {
-  font-size: 2.5rem;
-  margin-bottom: 12px;
-  opacity: 0.5;
-}
-
 .title {
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 600;
   color: var(--text);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .desc {
-  font-size: 0.875rem;
-  max-width: 320px;
-  line-height: 1.6;
+  font-size: 0.84rem;
+  max-width: 380px;
+  line-height: 1.5;
 }
 
-.action { margin-top: 20px; }
+.action {
+  margin-top: 16px;
+}

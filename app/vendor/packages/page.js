@@ -1,12 +1,12 @@
 /* app/vendor/packages/page.js
- * Vendor Food Packages & QR Codes Management
+ * Vendor Food Package Upload & QR Code Generation Portal
  *
  * Allows authenticated vendors to:
- * - View all food packages belonging to their own catering business
- * - Add new food packages (under Admin-approved vendor account)
- * - Edit package details (name, category, price, description)
- * - Activate / Deactivate their own food packages
- * - View & download QR codes generated for their packages
+ * - Upload complete food package information + food image
+ * - Automatically generate a unique, unpredictable QR code & scan URL
+ * - Download QR codes as PNG
+ * - View package approval status (pending / approved / rejected)
+ * - Edit or activate/deactivate their own packages
  */
 
 "use client";
@@ -17,13 +17,41 @@ import QRCode from "qrcode";
 import VendorLayout from "@/components/layout/VendorLayout";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { ApprovalBadge } from "@/components/ui/Badge";
+import { useToast } from "@/components/ui/Toast";
+import { BUCKETS, FOOD_CATEGORIES, MAX_IMAGE_BYTES, ALLOWED_MIME } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import { getCurrentUserProfile } from "@/lib/auth";
+import { formatDate, generateToken } from "@/lib/utils";
 import styles from "../vendor.module.css";
+
+const EMPTY_FORM = {
+  package_name: "",
+  category: "Meals",
+  description: "",
+  price: "",
+  ingredients: "",
+  prepared_at: "",
+  expires_at: "",
+  fssai_license: "",
+  train_info: "",
+  status: "active",
+};
+
+function toDateTimeLocal(isoStr) {
+  if (!isoStr) return "";
+  const d = new Date(isoStr);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export default function VendorPackagesPage() {
   const router = useRouter();
+  const toast = useToast();
   const [vendor, setVendor] = useState(null);
+  const [userId, setUserId] = useState(null);
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -32,16 +60,17 @@ export default function VendorPackagesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPkg, setEditingPkg] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    package_name: "",
-    category: "Meals",
-    price: "",
-    description: "",
-  });
+  const [formData, setFormData] = useState(EMPTY_FORM);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState("");
 
   // QR modal
   const [qrPkg, setQrPkg] = useState(null);
   const [qrUrl, setQrUrl] = useState("");
+  const [generatingQrId, setGeneratingQrId] = useState(null);
+
+  // Confirm status toggle
+  const [confirmTogglePkg, setConfirmTogglePkg] = useState(null);
 
   async function loadPackages() {
     setLoading(true);
@@ -49,9 +78,10 @@ export default function VendorPackagesPage() {
     try {
       const account = await getCurrentUserProfile();
       if (!account?.profile || account.profile.role !== "vendor") {
-        router.replace("/auth/login");
+        router.replace("/vendor/login");
         return;
       }
+      setUserId(account.user.id);
 
       const supabase = createClient();
       if (!supabase) throw new Error("Supabase is not configured.");
@@ -70,17 +100,12 @@ export default function VendorPackagesPage() {
       const { data: pkgData, error: pkgErr } = await supabase
         .from("food_packages")
         .select(`
-          id,
-          package_name,
-          category,
-          description,
-          price,
-          status,
-          created_at,
+          *,
           qr_codes (
             id,
             qr_token,
-            is_active
+            is_active,
+            created_at
           )
         `)
         .eq("vendor_id", vendorData.id)
@@ -104,8 +129,17 @@ export default function VendorPackagesPage() {
   }, [router]);
 
   function openAddModal() {
+    if (vendor?.status === "suspended") {
+      toast.error("Your vendor account is suspended. You cannot upload new packages.");
+      return;
+    }
     setEditingPkg(null);
-    setFormData({ package_name: "", category: "Meals", price: "", description: "" });
+    setFormData({
+      ...EMPTY_FORM,
+      fssai_license: vendor?.license_number || "",
+    });
+    setImageFile(null);
+    setImagePreview("");
     setModalOpen(true);
   }
 
@@ -114,24 +148,124 @@ export default function VendorPackagesPage() {
     setFormData({
       package_name: pkg.package_name || "",
       category: pkg.category || "Meals",
-      price: pkg.price != null ? String(pkg.price) : "",
       description: pkg.description || "",
+      price: pkg.price != null ? String(pkg.price) : "",
+      ingredients: pkg.ingredients || "",
+      prepared_at: toDateTimeLocal(pkg.prepared_at),
+      expires_at: toDateTimeLocal(pkg.expires_at),
+      fssai_license: pkg.fssai_license || vendor?.license_number || "",
+      train_info: pkg.train_info || "",
+      status: pkg.status || "active",
     });
+    setImageFile(null);
+    setImagePreview(pkg.image_url || "");
     setModalOpen(true);
+  }
+
+  function handleImageSelect(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!ALLOWED_MIME.includes(file.type)) {
+      toast.error("Only JPEG, PNG, or WebP images are supported.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast.error("Food image must be 5 MB or smaller.");
+      return;
+    }
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  }
+
+  async function renderQrModal(pkg, qrRecord) {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const scanLink = `${origin}/scan/${qrRecord.qr_token}`;
+    const dataUrl = await QRCode.toDataURL(scanLink, {
+      width: 320,
+      margin: 2,
+      color: { dark: "#0f172a", light: "#ffffff" },
+    });
+    setQrPkg({
+      ...pkg,
+      qrToken: qrRecord.qr_token,
+      qrActive: qrRecord.is_active,
+      scanLink,
+    });
+    setQrUrl(dataUrl);
+  }
+
+  async function createUniqueQrForPackage(supabase, packageId) {
+    const token = generateToken(24);
+    const { data, error } = await supabase
+      .from("qr_codes")
+      .insert([
+        {
+          package_id: packageId,
+          qr_token: token,
+          is_active: true,
+          created_by: userId,
+        },
+      ])
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
   }
 
   async function handleSavePackage(e) {
     e.preventDefault();
     if (!vendor) return;
-    setSubmitting(true);
+    if (vendor.status === "suspended") {
+      toast.error("Your vendor account is suspended.");
+      return;
+    }
 
+    if (!formData.package_name.trim() || !formData.description.trim() || !formData.ingredients.trim()) {
+      toast.error("Please fill in Food Name, Description, and Ingredients.");
+      return;
+    }
+    if (!formData.price || Number(formData.price) <= 0) {
+      toast.error("Please enter a valid food price greater than 0.");
+      return;
+    }
+    if (formData.prepared_at && formData.expires_at) {
+      if (new Date(formData.expires_at) <= new Date(formData.prepared_at)) {
+        toast.error("Expiry date/time must be after preparation date/time.");
+        return;
+      }
+    }
+
+    setSubmitting(true);
     try {
       const supabase = createClient();
+      let imageUrl = editingPkg?.image_url || null;
+
+      if (imageFile) {
+        const ext = imageFile.name.split(".").pop() || "jpg";
+        const filePath = `packages/${vendor.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const { error: uploadErr } = await supabase.storage
+          .from(BUCKETS.FOOD_IMAGES)
+          .upload(filePath, imageFile);
+
+        if (uploadErr) {
+          throw new Error(`Food image upload failed: ${uploadErr.message}`);
+        }
+        const { data: urlData } = supabase.storage.from(BUCKETS.FOOD_IMAGES).getPublicUrl(filePath);
+        imageUrl = urlData.publicUrl;
+      }
+
       const payload = {
         package_name: formData.package_name.trim(),
-        category: formData.category.trim() || "Meals",
-        price: formData.price ? parseFloat(formData.price) : null,
-        description: formData.description.trim() || null,
+        category: formData.category || "Meals",
+        description: formData.description.trim(),
+        price: parseFloat(formData.price),
+        image_url: imageUrl,
+        ingredients: formData.ingredients.trim(),
+        prepared_at: formData.prepared_at ? new Date(formData.prepared_at).toISOString() : null,
+        expires_at: formData.expires_at ? new Date(formData.expires_at).toISOString() : null,
+        fssai_license: formData.fssai_license.trim() || vendor.license_number,
+        train_info: formData.train_info.trim() || null,
+        status: formData.status || "active",
         updated_at: new Date().toISOString(),
       };
 
@@ -141,71 +275,100 @@ export default function VendorPackagesPage() {
           .update(payload)
           .eq("id", editingPkg.id);
         if (upErr) throw upErr;
+
+        toast.success("Food package updated.");
+        setModalOpen(false);
+        await loadPackages();
       } else {
-        const { error: insErr } = await supabase.from("food_packages").insert([
+        const { data: insertedPkg, error: insErr } = await supabase
+          .from("food_packages")
+          .insert([
+            {
+              ...payload,
+              vendor_id: vendor.id,
+              approval_status: "pending",
+            },
+          ])
+          .select()
+          .single();
+
+        if (insErr) throw insErr;
+
+        // Immediately generate unique QR token linked to this package
+        const qrRecord = await createUniqueQrForPackage(supabase, insertedPkg.id);
+
+        await supabase.from("audit_logs").insert([
           {
-            ...payload,
-            vendor_id: vendor.id,
-            status: "active",
+            user_id: userId,
+            action: "VENDOR_UPLOAD_PACKAGE_AND_QR",
+            target_entity: "food_package",
+            details: {
+              package_id: insertedPkg.id,
+              package_name: insertedPkg.package_name,
+              vendor_id: vendor.id,
+            },
           },
         ]);
-        if (insErr) throw insErr;
-      }
 
-      setModalOpen(false);
-      await loadPackages();
+        toast.success("Food package uploaded and unique QR code generated!");
+        setModalOpen(false);
+        await loadPackages();
+        await renderQrModal(insertedPkg, qrRecord);
+      }
     } catch (e) {
-      alert("Error saving package: " + e.message);
+      toast.error("Error saving package: " + e.message);
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function handleToggleStatus(pkg) {
-    const nextStatus = pkg.status === "active" ? "inactive" : "active";
-    const ok = confirm(
-      nextStatus === "inactive"
-        ? `Deactivate "${pkg.package_name}"? Passengers scanning its QR code will see it as inactive.`
-        : `Reactivate "${pkg.package_name}"?`
-    );
-    if (!ok) return;
-
-    const supabase = createClient();
-    const { error: upErr } = await supabase
-      .from("food_packages")
-      .update({ status: nextStatus, updated_at: new Date().toISOString() })
-      .eq("id", pkg.id);
-
-    if (upErr) {
-      alert("Failed to update status: " + upErr.message);
+  async function handleGenerateQr(pkg) {
+    if (vendor?.status === "suspended") {
+      toast.error("Suspended vendors cannot generate QR codes.");
       return;
     }
-
-    setPackages((prev) =>
-      prev.map((p) => (p.id === pkg.id ? { ...p, status: nextStatus } : p))
-    );
+    setGeneratingQrId(pkg.id);
+    try {
+      const supabase = createClient();
+      const existing = Array.isArray(pkg.qr_codes) ? pkg.qr_codes[0] : pkg.qr_codes;
+      if (existing?.qr_token) {
+        await renderQrModal(pkg, existing);
+        return;
+      }
+      const qrRecord = await createUniqueQrForPackage(supabase, pkg.id);
+      toast.success("Unique QR code generated for package.");
+      await loadPackages();
+      await renderQrModal(pkg, qrRecord);
+    } catch (e) {
+      toast.error("Could not generate QR code: " + e.message);
+    } finally {
+      setGeneratingQrId(null);
+    }
   }
 
-  async function handleViewQr(pkg) {
-    const qrRecord = Array.isArray(pkg.qr_codes) ? pkg.qr_codes[0] : pkg.qr_codes;
-    if (!qrRecord?.qr_token) {
-      alert("No QR code generated yet for this package. Ask RailGuard Admin to generate a verified QR code.");
-      return;
-    }
-
+  async function handleConfirmToggleStatus() {
+    if (!confirmTogglePkg) return;
+    const nextStatus = confirmTogglePkg.status === "active" ? "inactive" : "active";
     try {
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const scanLink = `${origin}/scan/${qrRecord.qr_token}`;
-      const dataUrl = await QRCode.toDataURL(scanLink, { width: 280, margin: 2 });
-      setQrPkg({ ...pkg, qrToken: qrRecord.qr_token, qrActive: qrRecord.is_active });
-      setQrUrl(dataUrl);
+      const supabase = createClient();
+      const { error: upErr } = await supabase
+        .from("food_packages")
+        .update({ status: nextStatus, updated_at: new Date().toISOString() })
+        .eq("id", confirmTogglePkg.id);
+      if (upErr) throw upErr;
+
+      toast.success(`Package "${confirmTogglePkg.package_name}" marked ${nextStatus}.`);
+      setPackages((prev) =>
+        prev.map((p) => (p.id === confirmTogglePkg.id ? { ...p, status: nextStatus } : p))
+      );
+      setConfirmTogglePkg(null);
     } catch (e) {
-      alert("Could not render QR image: " + e.message);
+      toast.error("Failed to update status: " + e.message);
     }
   }
 
   return (
-    <VendorLayout title="My Food Packages">
+    <VendorLayout title="My Food Packages & QR Codes">
       {loading ? (
         <div className={styles.loading}>Loading your food packages…</div>
       ) : error ? (
@@ -214,23 +377,29 @@ export default function VendorPackagesPage() {
         </div>
       ) : (
         <div className={styles.page}>
+          {vendor?.status === "suspended" && (
+            <div className={styles.errorBox}>
+              Your vendor account is suspended. Public scanning of all your packages is disabled.
+            </div>
+          )}
+
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
             <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-              Managing packages for <strong>{vendor?.business_name}</strong> ({packages.length} total)
+              Managing packages for <strong>{vendor?.business_name}</strong> ({packages.length} uploaded)
             </p>
-            <Button variant="primary" onClick={openAddModal}>
-              + Add Food Package
+            <Button variant="primary" onClick={openAddModal} disabled={vendor?.status === "suspended"}>
+              + Upload Food Package & Generate QR
             </Button>
           </div>
 
           {packages.length === 0 ? (
             <EmptyState
               icon="📦"
-              title="No food packages yet"
-              description="Add your catering meal packages here. RailGuard Admin can then generate verified QR codes for passenger scanning."
+              title="No food packages uploaded yet"
+              description="Upload your railway meal package with ingredients, pricing, and photo to generate a unique printable QR code."
               action={
-                <Button variant="primary" onClick={openAddModal}>
-                  + Add First Package
+                <Button variant="primary" onClick={openAddModal} disabled={vendor?.status === "suspended"}>
+                  + Upload First Food Package
                 </Button>
               }
             />
@@ -240,10 +409,10 @@ export default function VendorPackagesPage() {
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th>Package Name</th>
-                      <th>Category</th>
-                      <th>Tariff</th>
-                      <th>Status</th>
+                      <th>Food Package</th>
+                      <th>Category & Tariff</th>
+                      <th>Approval Status</th>
+                      <th>Active Status</th>
                       <th>QR Code</th>
                       <th>Actions</th>
                     </tr>
@@ -254,15 +423,42 @@ export default function VendorPackagesPage() {
                       return (
                         <tr key={pkg.id}>
                           <td>
-                            <div className={styles.bold}>{pkg.package_name}</div>
-                            {pkg.description && (
-                              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                                {pkg.description}
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                              {pkg.image_url ? (
+                                <img
+                                  src={pkg.image_url}
+                                  alt={pkg.package_name}
+                                  style={{ width: "44px", height: "44px", objectFit: "cover", borderRadius: "6px", border: "1px solid var(--border)", flexShrink: 0 }}
+                                />
+                              ) : (
+                                <div style={{ width: "44px", height: "44px", borderRadius: "6px", background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.7rem", color: "var(--text-muted)", flexShrink: 0 }}>
+                                  IMG
+                                </div>
+                              )}
+                              <div>
+                                <div className={styles.bold}>{pkg.package_name}</div>
+                                {pkg.train_info && (
+                                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                    Train: {pkg.train_info}
+                                  </div>
+                                )}
+                                {pkg.rejection_reason && pkg.approval_status === "rejected" && (
+                                  <div style={{ fontSize: "0.74rem", color: "#dc2626" }}>
+                                    Reason: {pkg.rejection_reason}
+                                  </div>
+                                )}
                               </div>
-                            )}
+                            </div>
                           </td>
-                          <td>{pkg.category || "Meals"}</td>
-                          <td>{pkg.price != null ? `₹${Number(pkg.price).toFixed(2)}` : "—"}</td>
+                          <td>
+                            <div>{pkg.category || "Meals"}</div>
+                            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                              {pkg.price != null ? `₹${Number(pkg.price).toFixed(2)}` : "—"}
+                            </div>
+                          </td>
+                          <td>
+                            <ApprovalBadge status={pkg.approval_status || "pending"} />
+                          </td>
                           <td>
                             <span className={pkg.status === "active" ? styles.badgeGreen : styles.badgeRed}>
                               {pkg.status}
@@ -270,24 +466,22 @@ export default function VendorPackagesPage() {
                           </td>
                           <td>
                             {qrRecord?.qr_token ? (
-                              <button
-                                onClick={() => handleViewQr(pkg)}
-                                style={{
-                                  background: "#e8f0fb",
-                                  color: "#0f2a52",
-                                  border: "1px solid #bfdbfe",
-                                  borderRadius: "6px",
-                                  padding: "4px 10px",
-                                  fontSize: "0.78rem",
-                                  fontWeight: 600,
-                                }}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => renderQrModal(pkg, qrRecord)}
                               >
-                                📱 View QR
-                              </button>
+                                View / Download QR
+                              </Button>
                             ) : (
-                              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                                Pending Admin QR
-                              </span>
+                              <Button
+                                size="sm"
+                                variant="primary"
+                                loading={generatingQrId === pkg.id}
+                                onClick={() => handleGenerateQr(pkg)}
+                              >
+                                Generate QR
+                              </Button>
                             )}
                           </td>
                           <td>
@@ -295,11 +489,7 @@ export default function VendorPackagesPage() {
                               <Button variant="outline" size="sm" onClick={() => openEditModal(pkg)}>
                                 Edit
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleToggleStatus(pkg)}
-                              >
+                              <Button variant="ghost" size="sm" onClick={() => setConfirmTogglePkg(pkg)}>
                                 {pkg.status === "active" ? "Deactivate" : "Activate"}
                               </Button>
                             </div>
@@ -313,13 +503,13 @@ export default function VendorPackagesPage() {
             </section>
           )}
 
-          {/* Add / Edit Modal */}
+          {/* Add / Edit Food Package Modal */}
           {modalOpen && (
             <div
               style={{
                 position: "fixed",
                 inset: 0,
-                background: "rgba(0,0,0,0.5)",
+                background: "rgba(0,0,0,0.55)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -334,78 +524,205 @@ export default function VendorPackagesPage() {
                   borderRadius: "12px",
                   padding: "24px",
                   width: "100%",
-                  maxWidth: "460px",
+                  maxWidth: "620px",
+                  maxHeight: "90vh",
+                  overflowY: "auto",
                   boxShadow: "var(--shadow-lg)",
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <h2 style={{ fontSize: "1.15rem", fontWeight: 700, marginBottom: "16px" }}>
-                  {editingPkg ? "Edit Food Package" : "Add Food Package"}
+                <h2 style={{ fontSize: "1.15rem", fontWeight: 700, marginBottom: "14px" }}>
+                  {editingPkg ? "Edit Food Package" : "Upload Food Package & Generate QR Code"}
                 </h2>
+
                 <form onSubmit={handleSavePackage} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  <div>
-                    <label style={{ fontSize: "0.82rem", fontWeight: 600, display: "block", marginBottom: "4px" }}>
-                      Package Name *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.package_name}
-                      onChange={(e) => setFormData({ ...formData, package_name: e.target.value })}
-                      placeholder="e.g. Standard Veg Thali"
-                      style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}
-                    />
+                  {/* Read-only Vendor Context */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", padding: "10px 12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--border)" }}>
+                    <div>
+                      <label style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", display: "block" }}>
+                        Vendor Name
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={vendor?.business_name || ""}
+                        style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--border)", borderRadius: "6px", background: "#eef2f7", fontSize: "0.84rem" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", display: "block" }}>
+                        Vendor ID
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={vendor?.id || ""}
+                        style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--border)", borderRadius: "6px", background: "#eef2f7", fontSize: "0.78rem", fontFamily: "monospace" }}
+                      />
+                    </div>
                   </div>
+
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                     <div>
                       <label style={{ fontSize: "0.82rem", fontWeight: 600, display: "block", marginBottom: "4px" }}>
-                        Category
+                        Food Name *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.package_name}
+                        onChange={(e) => setFormData({ ...formData, package_name: e.target.value })}
+                        placeholder="e.g. Standard Veg Thali"
+                        style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "0.82rem", fontWeight: 600, display: "block", marginBottom: "4px" }}>
+                        Food Category *
                       </label>
                       <select
                         value={formData.category}
                         onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                         style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}
                       >
-                        <option value="Meals">Meals</option>
-                        <option value="Breakfast">Breakfast</option>
-                        <option value="Snacks">Snacks</option>
-                        <option value="Beverages">Beverages</option>
-                        <option value="Combo">Combo</option>
+                        {FOOD_CATEGORIES.map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
                       </select>
                     </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                     <div>
                       <label style={{ fontSize: "0.82rem", fontWeight: 600, display: "block", marginBottom: "4px" }}>
-                        Tariff Price (₹)
+                        Food Price (₹) *
                       </label>
                       <input
                         type="number"
                         step="0.01"
-                        min="0"
+                        min="1"
+                        required
                         value={formData.price}
                         onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                        placeholder="80.00"
+                        placeholder="120.00"
+                        style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "0.82rem", fontWeight: 600, display: "block", marginBottom: "4px" }}>
+                        FSSAI Licence Number
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.fssai_license}
+                        onChange={(e) => setFormData({ ...formData, fssai_license: e.target.value })}
+                        placeholder="e.g. FSSAI-1002301100045"
                         style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}
                       />
                     </div>
                   </div>
+
                   <div>
                     <label style={{ fontSize: "0.82rem", fontWeight: 600, display: "block", marginBottom: "4px" }}>
-                      Description
+                      Food Description *
                     </label>
                     <textarea
-                      rows={3}
+                      rows={2}
+                      required
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      placeholder="Menu contents, serving weight, allergens..."
+                      placeholder="Describe meal items, portion size, and packaging type..."
                       style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}
                     />
                   </div>
+
+                  <div>
+                    <label style={{ fontSize: "0.82rem", fontWeight: 600, display: "block", marginBottom: "4px" }}>
+                      Ingredients *
+                    </label>
+                    <textarea
+                      rows={2}
+                      required
+                      value={formData.ingredients}
+                      onChange={(e) => setFormData({ ...formData, ingredients: e.target.value })}
+                      placeholder="e.g. Basmati rice, paneer, whole wheat flour, lentils, vegetable oil, spices"
+                      style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <div>
+                      <label style={{ fontSize: "0.82rem", fontWeight: 600, display: "block", marginBottom: "4px" }}>
+                        Preparation Date & Time
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={formData.prepared_at}
+                        onChange={(e) => setFormData({ ...formData, prepared_at: e.target.value })}
+                        style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "0.82rem", fontWeight: 600, display: "block", marginBottom: "4px" }}>
+                        Expiry Date & Time
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={formData.expires_at}
+                        onChange={(e) => setFormData({ ...formData, expires_at: e.target.value })}
+                        style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <div>
+                      <label style={{ fontSize: "0.82rem", fontWeight: 600, display: "block", marginBottom: "4px" }}>
+                        Train Number / Name (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.train_info}
+                        onChange={(e) => setFormData({ ...formData, train_info: e.target.value })}
+                        placeholder="e.g. 12951 Mumbai Rajdhani"
+                        style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "0.82rem", fontWeight: 600, display: "block", marginBottom: "4px" }}>
+                        Package Status
+                      </label>
+                      <select
+                        value={formData.status}
+                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                        style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px" }}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive (Draft)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "0.82rem", fontWeight: 600, display: "block", marginBottom: "4px" }}>
+                      Food Image (JPEG, PNG, WebP up to 5 MB)
+                    </label>
+                    <input type="file" accept="image/*" onChange={handleImageSelect} />
+                    {imagePreview && (
+                      <img
+                        src={imagePreview}
+                        alt="Food preview"
+                        style={{ marginTop: "8px", maxHeight: "140px", borderRadius: "8px", border: "1px solid var(--border)" }}
+                      />
+                    )}
+                  </div>
+
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
                     <Button variant="ghost" onClick={() => setModalOpen(false)} disabled={submitting}>
                       Cancel
                     </Button>
                     <Button type="submit" variant="primary" loading={submitting}>
-                      {editingPkg ? "Save Changes" : "Create Package"}
+                      {editingPkg ? "Save Changes" : "Upload & Generate QR Code"}
                     </Button>
                   </div>
                 </form>
@@ -434,18 +751,22 @@ export default function VendorPackagesPage() {
                   borderRadius: "12px",
                   padding: "24px",
                   width: "100%",
-                  maxWidth: "380px",
+                  maxWidth: "420px",
                   textAlign: "center",
                   boxShadow: "var(--shadow-lg)",
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "6px" }}>
+                <div style={{ fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.06em", color: "var(--navy)", marginBottom: "4px" }}>
+                  RAILGUARD PACKAGING QR STICKER
+                </div>
+                <h3 style={{ fontSize: "1.15rem", fontWeight: 700, marginBottom: "6px" }}>
                   {qrPkg.package_name}
                 </h3>
-                <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "14px" }}>
-                  QR Status: {qrPkg.qrActive ? "Active" : "Deactivated by Admin"}
-                </p>
+                <div style={{ marginBottom: "12px" }}>
+                  <ApprovalBadge status={qrPkg.approval_status || "pending"} />
+                </div>
+
                 {qrUrl && (
                   <img
                     src={qrUrl}
@@ -453,10 +774,18 @@ export default function VendorPackagesPage() {
                     style={{ width: "220px", height: "220px", margin: "0 auto 12px", borderRadius: "8px", border: "1px solid var(--border)" }}
                   />
                 )}
-                <p style={{ fontFamily: "monospace", fontSize: "0.72rem", color: "var(--text-muted)", wordBreak: "break-all", marginBottom: "16px" }}>
+
+                <p style={{ fontFamily: "monospace", fontSize: "0.72rem", color: "var(--text-muted)", wordBreak: "break-all", marginBottom: "8px" }}>
                   Token: {qrPkg.qrToken}
                 </p>
-                <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
+
+                {qrPkg.approval_status !== "approved" && (
+                  <p style={{ fontSize: "0.78rem", color: "#92400e", background: "#fef3c7", padding: "8px 10px", borderRadius: "6px", marginBottom: "14px" }}>
+                    Pending Railway Admin approval. Public QR scanning activates automatically once approved.
+                  </p>
+                )}
+
+                <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
                   {qrUrl && (
                     <a
                       href={qrUrl}
@@ -464,13 +793,13 @@ export default function VendorPackagesPage() {
                       style={{
                         background: "var(--navy)",
                         color: "#ffffff",
-                        padding: "8px 16px",
+                        padding: "9px 16px",
                         borderRadius: "6px",
                         fontSize: "0.85rem",
                         fontWeight: 600,
                       }}
                     >
-                      ⬇ Download PNG
+                      ⬇ Download QR Code (PNG)
                     </a>
                   )}
                   <Button variant="ghost" onClick={() => setQrPkg(null)}>
@@ -480,6 +809,20 @@ export default function VendorPackagesPage() {
               </div>
             </div>
           )}
+
+          <ConfirmDialog
+            open={Boolean(confirmTogglePkg)}
+            title={confirmTogglePkg?.status === "active" ? "Deactivate Food Package?" : "Activate Food Package?"}
+            message={
+              confirmTogglePkg?.status === "active"
+                ? `Deactivating "${confirmTogglePkg?.package_name}" will block passengers from scanning its QR code.`
+                : `Reactivating "${confirmTogglePkg?.package_name}" will make it active (subject to Admin approval).`
+            }
+            confirmLabel={confirmTogglePkg?.status === "active" ? "Deactivate" : "Activate"}
+            variant={confirmTogglePkg?.status === "active" ? "danger" : "primary"}
+            onConfirm={handleConfirmToggleStatus}
+            onCancel={() => setConfirmTogglePkg(null)}
+          />
         </div>
       )}
     </VendorLayout>

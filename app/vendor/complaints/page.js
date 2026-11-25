@@ -1,8 +1,5 @@
 /* app/vendor/complaints/page.js
- * Vendor Complaints View
- *
- * Displays sanitized complaints related to the logged-in vendor's packages.
- * Reporter PII and internal investigation reports remain strictly restricted.
+ * Vendor Complaints & Inspection Status View
  */
 
 "use client";
@@ -29,7 +26,7 @@ export default function VendorComplaintsPage() {
       try {
         const account = await getCurrentUserProfile();
         if (!account?.profile || account.profile.role !== "vendor") {
-          router.replace("/auth/login");
+          router.replace("/vendor/login");
           return;
         }
 
@@ -52,7 +49,7 @@ export default function VendorComplaintsPage() {
   );
 
   return (
-    <VendorLayout title="Package Complaints">
+    <VendorLayout title="Package Complaints & Inspection Status">
       {loading ? (
         <div className={styles.loading}>Loading complaints…</div>
       ) : error ? (
@@ -78,10 +75,11 @@ export default function VendorComplaintsPage() {
             >
               <option value="all">All Statuses</option>
               <option value="submitted">Submitted</option>
-              <option value="pending_review">Pending Review</option>
               <option value="assigned">Assigned</option>
               <option value="in_progress">In Progress</option>
               <option value="report_submitted">Report Submitted</option>
+              <option value="unable_to_resolve">Unable to Resolve</option>
+              <option value="escalated">Escalated</option>
               <option value="resolved">Resolved</option>
               <option value="reopened">Reopened</option>
             </select>
@@ -104,23 +102,23 @@ export default function VendorComplaintsPage() {
                       <th>Description</th>
                       <th>Severity</th>
                       <th>Status</th>
+                      <th>Inspection Status</th>
                       <th>Filed On</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map((c) => (
                       <tr key={c.id}>
-                        <td className={styles.bold}>
-                          {c.food_packages?.package_name || "Food Package"}
-                        </td>
-                        <td>
-                          {c.issue_type?.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase()) || "—"}
-                        </td>
-                        <td style={{ maxWidth: "320px", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                        <td className={styles.bold}>{c.food_packages?.package_name || "Food Package"}</td>
+                        <td>{c.issue_type?.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase()) || "—"}</td>
+                        <td style={{ maxWidth: "300px", fontSize: "0.82rem", color: "var(--text-muted)" }}>
                           {c.description}
                         </td>
                         <td><SeverityBadge severity={c.severity} /></td>
                         <td><StatusBadge status={c.status} /></td>
+                        <td style={{ fontSize: "0.8rem", color: "var(--navy)", fontWeight: 600 }}>
+                          {c.inspection_status || "Monitoring"}
+                        </td>
                         <td style={{ whiteSpace: "nowrap" }}>{formatDate(c.created_at)}</td>
                       </tr>
                     ))}
@@ -131,7 +129,7 @@ export default function VendorComplaintsPage() {
           )}
 
           <p className={styles.disclaimer}>
-            Passenger identity and confidential field inspection evidence are protected by Railway Privacy Policy.
+            Passenger identity and confidential field inspection details are protected by Railway Privacy Policy.
           </p>
         </div>
       )}
