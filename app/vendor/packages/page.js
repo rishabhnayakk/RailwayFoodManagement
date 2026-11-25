@@ -280,40 +280,24 @@ export default function VendorPackagesPage() {
         setModalOpen(false);
         await loadPackages();
       } else {
-        const { data: insertedPkg, error: insErr } = await supabase
-          .from("food_packages")
-          .insert([
-            {
-              ...payload,
-              vendor_id: vendor.id,
-              approval_status: "pending",
-            },
-          ])
-          .select()
-          .single();
+        const res = await fetch("/api/vendor/packages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const result = await res.json();
+        if (!res.ok) {
+          throw new Error(result.error || "Failed to upload food package.");
+        }
 
-        if (insErr) throw insErr;
-
-        // Immediately generate unique QR token linked to this package
-        const qrRecord = await createUniqueQrForPackage(supabase, insertedPkg.id);
-
-        await supabase.from("audit_logs").insert([
-          {
-            user_id: userId,
-            action: "VENDOR_UPLOAD_PACKAGE_AND_QR",
-            target_entity: "food_package",
-            details: {
-              package_id: insertedPkg.id,
-              package_name: insertedPkg.package_name,
-              vendor_id: vendor.id,
-            },
-          },
-        ]);
-
-        toast.success("Food package uploaded and unique QR code generated!");
+        toast.success(
+          `Food item ${result.package?.package_code || ""} uploaded and unique QR code generated!`
+        );
         setModalOpen(false);
         await loadPackages();
-        await renderQrModal(insertedPkg, qrRecord);
+        if (result.package && result.qr) {
+          await renderQrModal(result.package, result.qr);
+        }
       }
     } catch (e) {
       toast.error("Error saving package: " + e.message);
@@ -437,6 +421,11 @@ export default function VendorPackagesPage() {
                               )}
                               <div>
                                 <div className={styles.bold}>{pkg.package_name}</div>
+                                {pkg.package_code && (
+                                  <div style={{ fontSize: "0.74rem", fontFamily: "monospace", color: "var(--navy)" }}>
+                                    ID: {pkg.package_code}
+                                  </div>
+                                )}
                                 {pkg.train_info && (
                                   <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
                                     Train: {pkg.train_info}
@@ -763,6 +752,11 @@ export default function VendorPackagesPage() {
                 <h3 style={{ fontSize: "1.15rem", fontWeight: 700, marginBottom: "6px" }}>
                   {qrPkg.package_name}
                 </h3>
+                {qrPkg.package_code && (
+                  <p style={{ fontFamily: "monospace", fontSize: "0.78rem", color: "var(--navy)", fontWeight: 700, marginBottom: "6px" }}>
+                    Item Code: {qrPkg.package_code}
+                  </p>
+                )}
                 <div style={{ marginBottom: "12px" }}>
                   <ApprovalBadge status={qrPkg.approval_status || "pending"} />
                 </div>

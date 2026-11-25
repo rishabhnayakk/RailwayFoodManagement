@@ -3,13 +3,26 @@
  *
  * Re-verifies the QR token, package approval, and vendor active status server-side,
  * resolves any authenticated passenger ID from cookies, handles optional complaint
- * evidence photo upload into `complaint-evidence`, and writes feedback/complaint records.
+ * evidence photo upload into `complaint-evidence`, inserts feedback/complaint records,
+ * and returns the database-generated unique Complaint Reference ID (RG-YYYY-XXXXXX).
  */
 
+import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { BUCKETS, MAX_IMAGE_BYTES, ALLOWED_MIME } from "@/lib/constants";
+
+const REF_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function generateFallbackComplaintRef() {
+  const year = new Date().getUTCFullYear();
+  let suffix = "";
+  for (let i = 0; i < 6; i += 1) {
+    suffix += REF_ALPHABET[crypto.randomInt(0, REF_ALPHABET.length)];
+  }
+  return `RG-${year}-${suffix}`;
+}
 
 export async function POST(request) {
   try {
@@ -62,7 +75,6 @@ export async function POST(request) {
       }
     }
 
-    // Resolve optional authenticated user from cookies
     const serverSupabase = await createServerClient();
     const {
       data: { user },
@@ -73,7 +85,6 @@ export async function POST(request) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Re-verify QR token -> approved active package -> active vendor
     const { data: qrData, error: qrErr } = await db
       .from("qr_codes")
       .select(`
@@ -111,23 +122,19 @@ export async function POST(request) {
     }
 
     // 1. Save Feedback
-    const baseFeedback = {
-      package_id: pkg.id,
-      passenger_id: user?.id || null,
-      passenger_name: passengerName || "Anonymous Passenger",
-      rating,
-      comment: comment || null,
-    };
-
     const { data: fbRow, error: fbErr } = await db
       .from("feedback")
       .insert([
         {
-          ...baseFeedback,
+          package_id: pkg.id,
+          passenger_id: user?.id || null,
+          passenger_name: passengerName || "Anonymous Passenger",
+          rating,
           food_quality_rating: foodQualityRating || rating,
           taste_rating: tasteRating || rating,
           packaging_rating: packagingRating || rating,
           hygiene_rating: hygieneRating || rating,
+          comment: comment || null,
         },
       ])
       .select("id")
@@ -135,8 +142,10 @@ export async function POST(request) {
 
     if (fbErr) throw fbErr;
 
-    // 2. Optionally upload evidence & save Complaint
+    // 2. Optionally upload evidence & save Complaint with DB-generated unique Complaint ID
     let complaintId = null;
+    let complaintRef = null;
+
     if (registerComplaint) {
       let uploadedImageUrl = null;
 
@@ -170,29 +179,77 @@ export async function POST(request) {
         uploadedImageUrl = urlData.publicUrl;
       }
 
-      const { data: compRow, error: compErr } = await db
-        .from("complaints")
-        .insert([
-          {
-            package_id: pkg.id,
-            passenger_id: user?.id || null,
-            passenger_name: passengerName,
-            passenger_contact: passengerContact || null,
-            train_number: trainNumber || null,
-            pnr_number: pnrNumber || null,
-            coach_seat: coachSeat || null,
-            issue_type: issueType,
-            severity,
-            description,
-            status: "submitted",
-            image_url: uploadedImageUrl,
-          },
-        ])
-        .select("id")
-        .single();
+      const baseComplaintPayload = {
+        package_id: pkg.id,
+        passenger_id: user?.id || null,
+        passenger_name: passengerName,
+        passenger_contact: passengerContact || null,
+        train_number: trainNumber || null,
+        pnr_number: pnrNumber || null,
+        coach_seat: coachSeat || null,
+        issue_type: issueType,
+        severity,
+        description,
+        status: "submitted",
+        image_url: uploadedImageUrl,
+      };
 
-      if (compErr) throw compErr;
+      // Let the PostgreSQL trigger/default generate complaint_ref; retry safely on 23505 collisions
+      // and fall back to server-side crypto generation if the DB trigger has not been applied yet.
+      let compRow = null;
+      let lastInsertErr = null;
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const payload =
+          attempt === 0
+            ? baseComplaintPayload
+            : { ...baseComplaintPayload, complaint_ref: generateFallbackComplaintRef() };
+
+        const { data: inserted, error: compErr } = await db
+          .from("complaints")
+          .insert([payload])
+          .select("id, complaint_ref")
+          .single();
+
+        if (!compErr && inserted) {
+          compRow = inserted;
+          break;
+        }
+
+        lastInsertErr = compErr;
+        if (compErr?.code === "23505" || compErr?.code === "23502") {
+          continue;
+        }
+        break;
+      }
+
+      if (!compRow) {
+        throw lastInsertErr || new Error("Failed to register complaint.");
+      }
+
+      // If DB didn't have the trigger yet and returned null complaint_ref, assign a unique one once.
+      if (!compRow.complaint_ref) {
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          const candidate = generateFallbackComplaintRef();
+          const { data: updated, error: upErr } = await db
+            .from("complaints")
+            .update({ complaint_ref: candidate })
+            .eq("id", compRow.id)
+            .is("complaint_ref", null)
+            .select("id, complaint_ref")
+            .maybeSingle();
+
+          if (!upErr && updated?.complaint_ref) {
+            compRow = updated;
+            break;
+          }
+          if (upErr?.code === "23505") continue;
+          if (upErr) throw upErr;
+        }
+      }
+
       complaintId = compRow.id;
+      complaintRef = compRow.complaint_ref;
 
       await db.from("complaint_status_history").insert([
         {
@@ -200,7 +257,7 @@ export async function POST(request) {
           changed_by: user?.id || null,
           old_status: null,
           new_status: "submitted",
-          remarks: "Complaint submitted by passenger via RailGuard QR scan portal.",
+          remarks: `Complaint registered (${complaintRef || complaintId.slice(0, 8)}) via RailGuard QR portal.`,
         },
       ]);
     }
@@ -210,6 +267,7 @@ export async function POST(request) {
         success: true,
         feedbackId: fbRow.id,
         complaintId,
+        complaintRef,
       },
       { status: 201 }
     );

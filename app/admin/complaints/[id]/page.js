@@ -388,6 +388,12 @@ export default function AdminComplaintDetailPage({ params }) {
               <div className={styles.detailCard}>
                 <h3 className={styles.sectionTitle}>Complaint Overview</h3>
                 <div className={styles.infoRow}>
+                  <span className={styles.infoLabel}>Complaint ID</span>
+                  <code style={{ fontFamily: "monospace", fontWeight: 700 }}>
+                    {complaint.complaint_ref || complaint.id}
+                  </code>
+                </div>
+                <div className={styles.infoRow}>
                   <span className={styles.infoLabel}>Defect / Hygiene Issue</span>
                   <strong style={{ fontSize: "1rem", color: "#dc2626" }}>
                     {complaint.issue_type?.replace(/_/g, " ").toUpperCase()}

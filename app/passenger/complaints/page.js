@@ -225,7 +225,7 @@ export default function PassengerComplaintsPage() {
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.8rem", color: "var(--text-muted)", flexWrap: "wrap", gap: "8px" }}>
                   <span>
-                    Ref: <code style={{ fontFamily: "monospace" }}>{c.id}</code> • Reported on {formatDate(c.created_at)}
+                    Complaint ID: <code style={{ fontFamily: "monospace", fontWeight: 700 }}>{c.complaint_ref || c.id}</code> • Reported on {formatDate(c.created_at)}
                   </span>
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : c.id)}

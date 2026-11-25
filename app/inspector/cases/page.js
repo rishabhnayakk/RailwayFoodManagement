@@ -138,7 +138,7 @@ export default function InspectorCasesPage() {
                   {filtered.map((c) => (
                     <tr key={c.id}>
                       <td style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
-                        {c.id.slice(0, 8)}…
+                        {c.complaint_ref || `${c.id.slice(0, 8)}…`}
                       </td>
                       <td style={{ fontWeight: 600 }}>
                         {c.food_packages?.package_name || "Food Package"}

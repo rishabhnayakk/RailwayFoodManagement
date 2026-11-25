@@ -7,6 +7,7 @@
 
 -- 1. EXTENSIONS
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 2. ENUM TYPES
 DO $$ BEGIN
@@ -89,6 +90,7 @@ ALTER TABLE public.vendors
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.food_packages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    package_code TEXT UNIQUE NOT NULL,
     vendor_id UUID NOT NULL REFERENCES public.vendors(id) ON DELETE CASCADE,
     package_name TEXT NOT NULL,
     category TEXT NOT NULL DEFAULT 'Meals',
@@ -110,6 +112,7 @@ CREATE TABLE IF NOT EXISTS public.food_packages (
 );
 
 ALTER TABLE public.food_packages
+    ADD COLUMN IF NOT EXISTS package_code TEXT,
     ADD COLUMN IF NOT EXISTS image_url TEXT,
     ADD COLUMN IF NOT EXISTS ingredients TEXT,
     ADD COLUMN IF NOT EXISTS prepared_at TIMESTAMPTZ,
@@ -121,6 +124,109 @@ ALTER TABLE public.food_packages
     ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
 
+CREATE OR REPLACE FUNCTION public.generate_package_code()
+RETURNS TEXT AS $$
+DECLARE
+    chars CONSTANT TEXT := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    year_part TEXT := to_char(timezone('utc'::text, now()), 'YYYY');
+    raw_bytes BYTEA;
+    suffix TEXT;
+    candidate TEXT;
+    i INTEGER;
+    attempts INTEGER := 0;
+BEGIN
+    LOOP
+        attempts := attempts + 1;
+        raw_bytes := gen_random_bytes(6);
+        suffix := '';
+        FOR i IN 0..5 LOOP
+            suffix := suffix || substr(chars, (get_byte(raw_bytes, i) % length(chars)) + 1, 1);
+        END LOOP;
+
+        candidate := 'FD-' || year_part || '-' || suffix;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM public.food_packages p WHERE p.package_code = candidate
+        ) THEN
+            RETURN candidate;
+        END IF;
+
+        IF attempts >= 25 THEN
+            RAISE EXCEPTION 'Unable to generate unique package_code after % attempts', attempts;
+        END IF;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, extensions;
+
+CREATE OR REPLACE FUNCTION public.set_package_code()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.package_code IS NULL OR btrim(NEW.package_code) = '' THEN
+        NEW.package_code := public.generate_package_code();
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions;
+
+CREATE OR REPLACE FUNCTION public.ensure_package_qr_code()
+RETURNS TRIGGER AS $$
+DECLARE
+    candidate_token TEXT;
+    attempts INTEGER := 0;
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM public.qr_codes q WHERE q.package_id = NEW.id) THEN
+        LOOP
+            attempts := attempts + 1;
+            candidate_token := encode(gen_random_bytes(24), 'hex');
+            IF NOT EXISTS (SELECT 1 FROM public.qr_codes q WHERE q.qr_token = candidate_token) THEN
+                INSERT INTO public.qr_codes (package_id, qr_token, is_active)
+                VALUES (NEW.id, candidate_token, true)
+                ON CONFLICT (package_id) DO NOTHING;
+                EXIT;
+            END IF;
+            IF attempts >= 15 THEN
+                RAISE EXCEPTION 'Unable to generate unique qr_token after % attempts', attempts;
+            END IF;
+        END LOOP;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions;
+
+UPDATE public.food_packages
+SET package_code = public.generate_package_code()
+WHERE package_code IS NULL OR btrim(package_code) = '';
+
+ALTER TABLE public.food_packages
+    ALTER COLUMN package_code SET DEFAULT public.generate_package_code();
+
+ALTER TABLE public.food_packages
+    ALTER COLUMN package_code SET NOT NULL;
+
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'food_packages_package_code_key'
+    ) THEN
+        ALTER TABLE public.food_packages
+            ADD CONSTRAINT food_packages_package_code_key UNIQUE (package_code);
+    END IF;
+EXCEPTION
+    WHEN duplicate_table OR duplicate_object THEN NULL;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_food_packages_set_code ON public.food_packages;
+CREATE TRIGGER trg_food_packages_set_code
+    BEFORE INSERT ON public.food_packages
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_package_code();
+
+DROP TRIGGER IF EXISTS trg_food_packages_ensure_qr ON public.food_packages;
+CREATE TRIGGER trg_food_packages_ensure_qr
+    AFTER INSERT ON public.food_packages
+    FOR EACH ROW
+    EXECUTE FUNCTION public.ensure_package_qr_code();
+
+CREATE INDEX IF NOT EXISTS idx_food_packages_code ON public.food_packages(package_code);
 CREATE INDEX IF NOT EXISTS idx_food_packages_vendor ON public.food_packages(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_food_packages_approval ON public.food_packages(approval_status);
 
@@ -172,6 +278,7 @@ CREATE INDEX IF NOT EXISTS idx_feedback_passenger ON public.feedback(passenger_i
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.complaints (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    complaint_ref TEXT UNIQUE NOT NULL,
     package_id UUID NOT NULL REFERENCES public.food_packages(id) ON DELETE CASCADE,
     passenger_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
     assigned_inspector_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
@@ -190,7 +297,80 @@ CREATE TABLE IF NOT EXISTS public.complaints (
 );
 
 ALTER TABLE public.complaints ADD COLUMN IF NOT EXISTS passenger_name TEXT;
+ALTER TABLE public.complaints ADD COLUMN IF NOT EXISTS complaint_ref TEXT;
 
+CREATE OR REPLACE FUNCTION public.generate_complaint_ref()
+RETURNS TEXT AS $$
+DECLARE
+    chars CONSTANT TEXT := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    year_part TEXT := to_char(timezone('utc'::text, now()), 'YYYY');
+    raw_bytes BYTEA;
+    suffix TEXT;
+    candidate TEXT;
+    i INTEGER;
+    attempts INTEGER := 0;
+BEGIN
+    LOOP
+        attempts := attempts + 1;
+        raw_bytes := gen_random_bytes(6);
+        suffix := '';
+        FOR i IN 0..5 LOOP
+            suffix := suffix || substr(chars, (get_byte(raw_bytes, i) % length(chars)) + 1, 1);
+        END LOOP;
+
+        candidate := 'RG-' || year_part || '-' || suffix;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM public.complaints c WHERE c.complaint_ref = candidate
+        ) THEN
+            RETURN candidate;
+        END IF;
+
+        IF attempts >= 25 THEN
+            RAISE EXCEPTION 'Unable to generate unique complaint_ref after % attempts', attempts;
+        END IF;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, extensions;
+
+CREATE OR REPLACE FUNCTION public.set_complaint_ref()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.complaint_ref IS NULL OR btrim(NEW.complaint_ref) = '' THEN
+        NEW.complaint_ref := public.generate_complaint_ref();
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions;
+
+UPDATE public.complaints
+SET complaint_ref = public.generate_complaint_ref()
+WHERE complaint_ref IS NULL OR btrim(complaint_ref) = '';
+
+ALTER TABLE public.complaints
+    ALTER COLUMN complaint_ref SET DEFAULT public.generate_complaint_ref();
+
+ALTER TABLE public.complaints
+    ALTER COLUMN complaint_ref SET NOT NULL;
+
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'complaints_complaint_ref_key'
+    ) THEN
+        ALTER TABLE public.complaints
+            ADD CONSTRAINT complaints_complaint_ref_key UNIQUE (complaint_ref);
+    END IF;
+EXCEPTION
+    WHEN duplicate_table OR duplicate_object THEN NULL;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_complaints_set_ref ON public.complaints;
+CREATE TRIGGER trg_complaints_set_ref
+    BEFORE INSERT ON public.complaints
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_complaint_ref();
+
+CREATE INDEX IF NOT EXISTS idx_complaints_ref ON public.complaints(complaint_ref);
 CREATE INDEX IF NOT EXISTS idx_complaints_package ON public.complaints(package_id);
 CREATE INDEX IF NOT EXISTS idx_complaints_passenger ON public.complaints(passenger_id);
 CREATE INDEX IF NOT EXISTS idx_complaints_inspector ON public.complaints(assigned_inspector_id);
@@ -348,6 +528,7 @@ CREATE POLICY "Staff and owning vendor can view vendor records"
         public.is_admin()
         OR public.is_inspector()
         OR owner_user_id = auth.uid()
+        OR status = 'active'
     );
 
 CREATE POLICY "Admins can manage vendors"
@@ -372,13 +553,13 @@ CREATE POLICY "Authenticated staff and owning vendor view packages"
             SELECT 1 FROM public.vendors v
             WHERE v.id = vendor_id AND v.owner_user_id = auth.uid()
         )
-        OR EXISTS (
-            SELECT 1 FROM public.complaints c
-            WHERE c.package_id = id AND c.passenger_id = auth.uid()
-        )
-        OR EXISTS (
-            SELECT 1 FROM public.feedback f
-            WHERE f.package_id = id AND f.passenger_id = auth.uid()
+        OR (
+            status = 'active'
+            AND approval_status = 'approved'
+            AND EXISTS (
+                SELECT 1 FROM public.vendors v
+                WHERE v.id = vendor_id AND v.status = 'active'
+            )
         )
     );
 
@@ -432,6 +613,20 @@ CREATE POLICY "Admins can manage qr codes"
     ON public.qr_codes FOR ALL
     USING (public.is_admin())
     WITH CHECK (public.is_admin());
+
+CREATE POLICY "Public can verify active approved qr codes"
+    ON public.qr_codes FOR SELECT
+    USING (
+        is_active = true
+        AND EXISTS (
+            SELECT 1 FROM public.food_packages p
+            JOIN public.vendors v ON v.id = p.vendor_id
+            WHERE p.id = package_id
+              AND p.status = 'active'
+              AND p.approval_status = 'approved'
+              AND v.status = 'active'
+        )
+    );
 
 CREATE POLICY "Vendors view own qr codes"
     ON public.qr_codes FOR SELECT
@@ -676,40 +871,48 @@ VALUES
   ('inspection-evidence', 'inspection-evidence', true)
 ON CONFLICT (id) DO NOTHING;
 
--- Food Images (Vendors & Admins upload; public read for verified food display)
-DROP POLICY IF EXISTS "Public can upload food evidence images" ON storage.objects;
-DROP POLICY IF EXISTS "Public can view food evidence images" ON storage.objects;
-DROP POLICY IF EXISTS "Vendors and admins can upload food images" ON storage.objects;
-DROP POLICY IF EXISTS "Public can view food images" ON storage.objects;
+-- Storage RLS policies (wrapped so newer Supabase storage ownership never rolls back tables)
+DO $$ BEGIN
+  -- Food Images (Vendors & Admins upload; public read for verified food display)
+  DROP POLICY IF EXISTS "Public can upload food evidence images" ON storage.objects;
+  DROP POLICY IF EXISTS "Public can view food evidence images" ON storage.objects;
+  DROP POLICY IF EXISTS "Vendors and admins can upload food images" ON storage.objects;
+  DROP POLICY IF EXISTS "Public can view food images" ON storage.objects;
 
-CREATE POLICY "Vendors and admins can upload food images"
-ON storage.objects FOR INSERT
-WITH CHECK (bucket_id = 'food-images' AND (public.is_vendor() OR public.is_admin()));
+  CREATE POLICY "Vendors and admins can upload food images"
+  ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'food-images' AND (public.is_vendor() OR public.is_admin()));
 
-CREATE POLICY "Public can view food images"
-ON storage.objects FOR SELECT
-USING (bucket_id = 'food-images');
+  CREATE POLICY "Public can view food images"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'food-images');
 
--- Complaint Evidence (Uploaded during QR complaint filing; public/staff read)
-DROP POLICY IF EXISTS "Anyone can upload complaint evidence" ON storage.objects;
-DROP POLICY IF EXISTS "Public can view complaint evidence" ON storage.objects;
+  -- Complaint Evidence (Uploaded during QR complaint filing; public/staff read)
+  DROP POLICY IF EXISTS "Anyone can upload complaint evidence" ON storage.objects;
+  DROP POLICY IF EXISTS "Public can view complaint evidence" ON storage.objects;
 
-CREATE POLICY "Anyone can upload complaint evidence"
-ON storage.objects FOR INSERT
-WITH CHECK (bucket_id = 'complaint-evidence');
+  CREATE POLICY "Anyone can upload complaint evidence"
+  ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'complaint-evidence');
 
-CREATE POLICY "Public can view complaint evidence"
-ON storage.objects FOR SELECT
-USING (bucket_id = 'complaint-evidence');
+  CREATE POLICY "Public can view complaint evidence"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'complaint-evidence');
 
--- Inspection Evidence (Inspectors & Admins upload; staff/public read)
-DROP POLICY IF EXISTS "Inspectors and admins can upload inspection evidence" ON storage.objects;
-DROP POLICY IF EXISTS "Public can view inspection evidence" ON storage.objects;
+  -- Inspection Evidence (Inspectors & Admins upload; staff/public read)
+  DROP POLICY IF EXISTS "Inspectors and admins can upload inspection evidence" ON storage.objects;
+  DROP POLICY IF EXISTS "Public can view inspection evidence" ON storage.objects;
 
-CREATE POLICY "Inspectors and admins can upload inspection evidence"
-ON storage.objects FOR INSERT
-WITH CHECK (bucket_id = 'inspection-evidence' AND (public.is_inspector() OR public.is_admin()));
+  CREATE POLICY "Inspectors and admins can upload inspection evidence"
+  ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'inspection-evidence' AND (public.is_inspector() OR public.is_admin()));
 
-CREATE POLICY "Public can view inspection evidence"
-ON storage.objects FOR SELECT
-USING (bucket_id = 'inspection-evidence');
+  CREATE POLICY "Public can view inspection evidence"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'inspection-evidence');
+EXCEPTION
+  WHEN insufficient_privilege THEN
+    RAISE NOTICE 'Skipped storage.objects policy setup due to ownership permissions; configure via Storage UI if needed.';
+END $$;
+
+NOTIFY pgrst, 'reload schema';

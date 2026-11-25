@@ -41,6 +41,7 @@ export default function ComplaintsPage() {
           .from("complaints")
           .select(`
             id,
+            complaint_ref,
             issue_type,
             severity,
             status,
@@ -86,7 +87,8 @@ export default function ComplaintsPage() {
       vendorName.includes(term) ||
       issue.includes(term) ||
       inspectorName.includes(term) ||
-      c.id.includes(term);
+      c.id.includes(term) ||
+      (c.complaint_ref?.toLowerCase() || "").includes(term);
 
     const matchesStatus = statusFilter === "all" || c.status === statusFilter;
     const matchesSeverity = severityFilter === "all" || c.severity === severityFilter;
@@ -178,7 +180,7 @@ export default function ComplaintsPage() {
                   <tbody>
                     {filtered.map((c) => (
                       <tr key={c.id}>
-                        <td className={styles.codeText}>{c.id.slice(0, 8)}…</td>
+                        <td className={styles.codeText}>{c.complaint_ref || `${c.id.slice(0, 8)}…`}</td>
                         <td style={{ fontWeight: 600 }}>
                           {c.food_packages?.package_name ?? "Unspecified"}
                         </td>

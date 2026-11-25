@@ -423,7 +423,9 @@ export default function InspectorCaseDetailPage({ params }) {
                 <h3 className={styles.sectionTitle}>Complaint Overview</h3>
                 <div className={styles.infoRow}>
                   <span className={styles.infoLabel}>Complaint ID</span>
-                  <code style={{ fontFamily: "monospace", fontSize: "0.85rem" }}>{complaint.id}</code>
+                  <code style={{ fontFamily: "monospace", fontSize: "0.88rem", fontWeight: 700 }}>
+                    {complaint.complaint_ref || complaint.id}
+                  </code>
                 </div>
                 <div className={styles.infoRow}>
                   <span className={styles.infoLabel}>Reported Defect / Issue</span>

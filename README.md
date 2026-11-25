@@ -48,9 +48,10 @@ Every status change is recorded in `complaint_status_history` with complaint ID,
 ## 4. Application Routes & API Endpoints
 
 ### Portal & Public Pages
-- `/` — Landing page with audit workflow summary and 4-portal directory
+- `/` — Redesigned RAILGUARD homepage with hero banner, Scan QR workflow, and Track Previous Complaint entry
 - `/scan` — Mobile-friendly QR camera scanner (`html5-qrcode`) and manual token entry
-- `/scan/[token]` — Server-verified food package details, 1–5 star rating, food feedback, and optional complaint registration form
+- `/scan/[token]` — Server-verified food package details, 1–5 star rating, food feedback, and optional complaint registration with automatic unique Complaint ID (`RG-YYYY-XXXXXX`)
+- `/track` — Public Complaint Tracking page by unique Complaint ID (`RG-YYYY-XXXXXX`) showing live status and timeline
 - `/auth/login`, `/auth/register` — Passenger login & registration
 - `/passenger`, `/passenger/complaints`, `/passenger/feedback` — Passenger dashboard, complaint lifecycle tracker, and rating history
 - `/vendor/login`, `/vendor`, `/vendor/packages`, `/vendor/feedback`, `/vendor/complaints` — Vendor workspace, food package upload + QR generation, feedback, and sanitized complaints
@@ -59,7 +60,8 @@ Every status change is recorded in `complaint_status_history` with complaint ID,
 
 ### Server API Route Handlers
 - `GET /api/qr/verify?token=...` — Server-side QR verification (active QR, non-expired token, approved & active package, active vendor)
-- `POST /api/scan/submit` — Server-validated feedback & optional complaint submission with evidence upload to `complaint-evidence`
+- `POST /api/scan/submit` — Server-validated feedback & optional complaint submission returning the unique DB-generated `complaintRef` (`RG-YYYY-XXXXXX`)
+- `GET /api/complaints/track?id=...` — Public Complaint ID lookup returning non-PII complaint status, package info, and chronological status history
 - `GET /api/admin/stats` — Authenticated Admin KPI aggregation
 - `POST /api/admin/create-account` — Authenticated Admin provisioning of Vendor and Inspector accounts
 - `POST /api/admin/toggle-status` — Authenticated Admin activation/suspension for Vendor and Inspector accounts

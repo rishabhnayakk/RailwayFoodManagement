@@ -64,6 +64,7 @@ export default function VerifiedPackageFeedbackPage({ params }) {
 
   const [submitting, setSubmitting] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
+  const [copiedId, setCopiedId] = useState(false);
 
   useEffect(() => {
     async function verifyAndLoad() {
@@ -174,18 +175,30 @@ export default function VerifiedPackageFeedbackPage({ params }) {
 
       setConfirmation({
         type: registerComplaint ? "complaint" : "feedback",
-        refId: result.complaintId || null,
+        refId: result.complaintRef || result.complaintId || null,
         title: registerComplaint
-          ? "Feedback & Complaint Registered"
+          ? "Complaint Registered Successfully!"
           : "Rating & Feedback Recorded!",
         message: registerComplaint
-          ? "Your feedback and hygiene complaint have been saved and queued for Railway Quality Administration review."
+          ? "Please save your Complaint ID. You will need it to track your complaint status."
           : "Thank you for contributing to Indian Railways food quality monitoring.",
       });
     } catch (err) {
       toast.error(err.message || "Failed to submit.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleCopyComplaintId(idText) {
+    if (!idText) return;
+    try {
+      await navigator.clipboard.writeText(idText);
+      setCopiedId(true);
+      toast.success("Complaint ID copied to clipboard.");
+      setTimeout(() => setCopiedId(false), 2500);
+    } catch {
+      toast.error("Could not copy automatically. Please select and copy your Complaint ID.");
     }
   }
 
@@ -224,34 +237,49 @@ export default function VerifiedPackageFeedbackPage({ params }) {
 
         {!loading && confirmation && (
           <div className={styles.successBox}>
-            <h2 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: "8px" }}>
+            <h2 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "8px", color: "var(--navy)" }}>
               {confirmation.title}
             </h2>
-            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", maxWidth: "460px", margin: "0 auto", lineHeight: 1.55 }}>
-              {confirmation.message}
-            </p>
 
             {confirmation.refId && (
-              <div>
-                <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "16px" }}>
-                  Your Unique Complaint Reference ID:
+              <div style={{ margin: "14px 0" }}>
+                <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "6px" }}>
+                  Your Complaint ID:
                 </p>
                 <div className={styles.refCode}>{confirmation.refId}</div>
               </div>
             )}
 
-            <div style={{ display: "flex", gap: "12px", justifyContent: "center", marginTop: "24px", flexWrap: "wrap" }}>
-              {userProfile ? (
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", maxWidth: "460px", margin: "0 auto", lineHeight: 1.55 }}>
+              {confirmation.message}
+            </p>
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "22px", flexWrap: "wrap" }}>
+              {confirmation.refId && (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleCopyComplaintId(confirmation.refId)}
+                  >
+                    {copiedId ? "Copied!" : "Copy Complaint ID"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={() => router.push(`/track?id=${encodeURIComponent(confirmation.refId)}`)}
+                  >
+                    Track Complaint
+                  </Button>
+                </>
+              )}
+              {!confirmation.refId && userProfile && (
                 <Button variant="primary" onClick={() => router.push("/passenger/complaints")}>
-                  Track Complaint Status →
-                </Button>
-              ) : (
-                <Button variant="outline" onClick={() => router.push("/auth/login")}>
-                  Sign In to Track Updates
+                  My Complaints
                 </Button>
               )}
-              <Button variant="ghost" onClick={() => router.push("/")}>
-                Home
+              <Button type="button" variant="ghost" onClick={() => router.push("/")}>
+                Back to Homepage
               </Button>
             </div>
           </div>
