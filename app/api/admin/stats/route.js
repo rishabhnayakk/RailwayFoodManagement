@@ -4,11 +4,11 @@
  * Route Handler querying Supabase for real dashboard metrics:
  * - total feedback
  * - total complaints
- * - counts by status (pending, review, resolved, rejected)
+ * - counts by status (pending_review, assigned, in_progress, report_submitted, resolved, reopened)
  * - average food rating
  * - total vendors
  * - recent complaints
- * - hygiene breakdown
+ * - hygiene issue breakdown
  */
 
 import { NextResponse } from "next/server";
@@ -33,21 +33,33 @@ export async function GET() {
       feedbackCountRes,
       complaintsCountRes,
       pendingCountRes,
-      reviewCountRes,
+      assignedCountRes,
+      inProgressCountRes,
+      reportSubmittedCountRes,
       resolvedCountRes,
-      rejectedCountRes,
+      reopenedCountRes,
       vendorsCountRes,
+      inspectorsCountRes,
       ratingRes,
       recentComplaintsRes,
       allComplaintsRes,
     ] = await Promise.all([
       supabase.from("feedback").select("*", { count: "exact", head: true }),
       supabase.from("complaints").select("*", { count: "exact", head: true }),
-      supabase.from("complaints").select("*", { count: "exact", head: true }).eq("status", "pending"),
-      supabase.from("complaints").select("*", { count: "exact", head: true }).eq("status", "under_review"),
+      // 'pending_review' is the initial status when a complaint is submitted
+      supabase.from("complaints").select("*", { count: "exact", head: true }).eq("status", "pending_review"),
+      // 'assigned' — complaint assigned to an inspector, awaiting investigation start
+      supabase.from("complaints").select("*", { count: "exact", head: true }).eq("status", "assigned"),
+      // 'in_progress' — inspector is actively investigating
+      supabase.from("complaints").select("*", { count: "exact", head: true }).eq("status", "in_progress"),
+      // 'report_submitted' — inspector submitted findings, awaiting admin review
+      supabase.from("complaints").select("*", { count: "exact", head: true }).eq("status", "report_submitted"),
+      // 'resolved' — admin closed complaint
       supabase.from("complaints").select("*", { count: "exact", head: true }).eq("status", "resolved"),
-      supabase.from("complaints").select("*", { count: "exact", head: true }).eq("status", "rejected"),
+      // 'reopened' — admin reopened a previously resolved complaint
+      supabase.from("complaints").select("*", { count: "exact", head: true }).eq("status", "reopened"),
       supabase.from("vendors").select("*", { count: "exact", head: true }),
+      supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "inspector"),
       supabase.from("feedback").select("rating"),
       supabase
         .from("complaints")
@@ -87,15 +99,27 @@ export async function GET() {
       count,
     }));
 
+    // Active = complaints not yet resolved or closed
+    const activeComplaints =
+      (pendingCountRes.count ?? 0) +
+      (assignedCountRes.count ?? 0) +
+      (inProgressCountRes.count ?? 0) +
+      (reportSubmittedCountRes.count ?? 0) +
+      (reopenedCountRes.count ?? 0);
+
     return NextResponse.json({
       stats: {
         total_feedback: feedbackCountRes.count ?? 0,
         total_complaints: complaintsCountRes.count ?? 0,
         pending_complaints: pendingCountRes.count ?? 0,
-        review_complaints: reviewCountRes.count ?? 0,
+        assigned_complaints: assignedCountRes.count ?? 0,
+        in_progress_complaints: inProgressCountRes.count ?? 0,
+        report_submitted_complaints: reportSubmittedCountRes.count ?? 0,
         resolved_complaints: resolvedCountRes.count ?? 0,
-        rejected_complaints: rejectedCountRes.count ?? 0,
+        reopened_complaints: reopenedCountRes.count ?? 0,
+        active_complaints: activeComplaints,
         total_vendors: vendorsCountRes.count ?? 0,
+        total_inspectors: inspectorsCountRes.count ?? 0,
         avg_rating: avg_rating ? avg_rating.toFixed(1) : null,
       },
       recentComplaints: recentComplaintsRes.data ?? [],

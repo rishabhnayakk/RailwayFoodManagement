@@ -142,7 +142,7 @@ export default function PassengerFeedbackPage() {
 
               {f.comment && (
                 <p style={{ fontSize: "0.85rem", color: "var(--text)", background: "#f8fafc", padding: "10px", borderRadius: "6px" }}>
-                  "{f.comment}"
+                  &ldquo;{f.comment}&rdquo;
                 </p>
               )}
 

@@ -8,9 +8,7 @@
 //
 // This is one of Next.js App Router's most powerful features — nested layouts.
 //
-// DATABASE: No DB call here. Auth check happens in middleware (Phase 2).
-
-import { Inter } from "next/font/google";
+// DATABASE: No DB call here. Auth check happens in middleware / layouts.
 
 export const metadata = {
   title: "RailGuard Admin",

@@ -147,9 +147,12 @@ export default function InspectorCaseDetailPage({ params }) {
   }
 
   useEffect(() => {
-    if (complaintId) {
+    if (!complaintId) return;
+    const timer = setTimeout(() => {
       loadCaseData();
-    }
+    }, 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [complaintId]);
 
   // Transition status from 'assigned' to 'in_progress'

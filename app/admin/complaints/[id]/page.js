@@ -148,9 +148,12 @@ export default function AdminComplaintDetailPage({ params }) {
   }
 
   useEffect(() => {
-    if (complaintId) {
+    if (!complaintId) return;
+    const timer = setTimeout(() => {
       loadData();
-    }
+    }, 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [complaintId]);
 
   // Action: Assign Inspector

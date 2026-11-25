@@ -16,8 +16,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ADMIN_NAV, APP_NAME } from "@/lib/constants";
+import { signOutUser } from "@/lib/auth";
 import styles from "./AdminSidebar.module.css";
 
 /* Nav icon map — using emoji so we have zero icon-library dependencies */
@@ -32,6 +33,12 @@ const NAV_ICONS = {
 
 export default function AdminSidebar({ open, onClose }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleSignOut() {
+    await signOutUser();
+    router.push("/auth/login");
+  }
 
   return (
     <>
@@ -79,10 +86,10 @@ export default function AdminSidebar({ open, onClose }) {
 
         {/* ── Sign Out ── */}
         <div className={styles.sidebarFooter}>
-          <Link href="/admin/logout" className={styles.signOut}>
+          <button onClick={handleSignOut} className={styles.signOut}>
             <span>🚪</span>
             Sign Out
-          </Link>
+          </button>
         </div>
       </aside>
     </>

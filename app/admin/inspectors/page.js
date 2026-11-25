@@ -15,7 +15,6 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { createClient } from "@/lib/supabase/client";
-import { getCurrentUserProfile } from "@/lib/auth";
 import styles from "./inspectors.module.css";
 
 export default function InspectorsPage() {
@@ -87,7 +86,10 @@ export default function InspectorsPage() {
   }
 
   useEffect(() => {
-    fetchInspectors();
+    const timer = setTimeout(() => {
+      fetchInspectors();
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   async function handleRegisterInspector(e) {
@@ -98,57 +100,29 @@ export default function InspectorsPage() {
     }
 
     setSubmitting(true);
-    const supabase = createClient();
-    if (!supabase) {
-      alert("Supabase is not configured.");
-      setSubmitting(false);
-      return;
-    }
 
     try {
-      const authData = await getCurrentUserProfile();
-
-      // Sign up inspector with role = 'inspector' in metadata
-      const { data: signupData, error: signupError } = await supabase.auth.signUp({
-        email: formData.email.trim(),
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.full_name.trim(),
-            phone: formData.phone.trim() || null,
-            role: "inspector",
-          },
-        },
+      // Use the secure server-side API route so the Admin session is NOT replaced
+      // by the newly created inspector session (which browser-side signUp would cause).
+      const res = await fetch("/api/admin/create-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email:     formData.email.trim(),
+          password:  formData.password,
+          full_name: formData.full_name.trim(),
+          phone:     formData.phone.trim() || null,
+          role:      "inspector",
+        }),
       });
 
-      if (signupError) throw signupError;
+      const result = await res.json();
 
-      // In case auto-trigger had a delay, guarantee public.profiles record
-      if (signupData?.user) {
-        await supabase.from("profiles").upsert({
-          id: signupData.user.id,
-          email: formData.email.trim(),
-          full_name: formData.full_name.trim(),
-          phone: formData.phone.trim() || null,
-          role: "inspector",
-        });
-
-        // Audit log
-        await supabase.from("audit_logs").insert([
-          {
-            user_id: authData?.user?.id || null,
-            action: "REGISTER_INSPECTOR",
-            target_entity: "profile",
-            details: {
-              inspector_id: signupData.user.id,
-              full_name: formData.full_name,
-              email: formData.email,
-            },
-          },
-        ]);
+      if (!res.ok) {
+        throw new Error(result.error || "Failed to create inspector account.");
       }
 
-      alert(`Inspector "${formData.full_name}" registered successfully. They may now sign in at /inspector/login.`);
+      alert(`Inspector "${formData.full_name}" registered successfully. They may now sign in at /auth/login.`);
       setFormData({ full_name: "", email: "", phone: "", password: "" });
       setModalOpen(false);
       fetchInspectors();

@@ -1,8 +1,8 @@
 /* app/admin/vendors/page.js
  * Vendor Management Portal
  *
- * Railway quality administration monitors all licensed catering & food contractors.
- * Vendors are managed strictly by Admin; they have NO login or portal.
+ * Railway quality administration monitors all licensed catering & food contractors
+ * and can provision vendor portal login credentials linked via owner_user_id.
  * Connects to Supabase `vendors` table. Shows real empty states.
  * NO mock records. NO external icon library.
  */
@@ -38,6 +38,11 @@ export default function VendorsPage() {
   });
   const [submitting, setSubmitting] = useState(false);
 
+  // Vendor portal login provisioning state
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [creatingLogin, setCreatingLogin] = useState(false);
+
   async function loadVendors() {
     setLoading(true);
     const supabase = createClient();
@@ -69,7 +74,10 @@ export default function VendorsPage() {
   }
 
   useEffect(() => {
-    loadVendors();
+    const timer = setTimeout(() => {
+      loadVendors();
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   async function handleCreateVendor(e) {
@@ -184,6 +192,8 @@ export default function VendorsPage() {
   // View vendor details & packages
   async function handleViewDetails(vendor) {
     setSelectedVendor(vendor);
+    setLoginEmail(vendor.email || "");
+    setLoginPassword("");
     setPackagesLoading(true);
 
     const supabase = createClient();
@@ -193,9 +203,22 @@ export default function VendorsPage() {
     }
 
     try {
+      // food_packages does NOT have a qr_token column; it lives in the qr_codes table.
+      // We join qr_codes to get the token for each package.
       const { data, error } = await supabase
         .from("food_packages")
-        .select("id, package_name, category, price, status, qr_token, created_at")
+        .select(`
+          id,
+          package_name,
+          category,
+          price,
+          status,
+          created_at,
+          qr_codes (
+            qr_token,
+            is_active
+          )
+        `)
         .eq("vendor_id", vendor.id)
         .order("created_at", { ascending: false });
 
@@ -437,12 +460,81 @@ export default function VendorsPage() {
                         {pkg.price && <span style={{ marginLeft: "6px", color: "var(--text-muted)" }}>• ₹{pkg.price}</span>}
                       </div>
                       <span style={{ fontFamily: "monospace", fontSize: "0.75rem", color: "var(--navy)" }}>
-                        {pkg.qr_token ? `${pkg.qr_token.slice(0, 8)}…` : "—"}
+                        {pkg.qr_codes?.[0]?.qr_token ? `${pkg.qr_codes[0].qr_token.slice(0, 8)}…` : "—"}
                       </span>
                     </div>
                   ))}
                 </div>
               )}
+
+              {/* Vendor Portal Access Provisioning */}
+              <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px", marginTop: "14px" }}>
+                <h3 style={{ fontSize: "0.9rem", fontWeight: 700, marginBottom: "8px" }}>
+                  Vendor Portal Login Access
+                </h3>
+                {selectedVendor.owner_user_id ? (
+                  <p style={{ fontSize: "0.82rem", color: "#166534", fontWeight: 600 }}>
+                    ✓ Portal login account linked (User ID: {selectedVendor.owner_user_id.slice(0, 8)}…)
+                  </p>
+                ) : (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!loginPassword || loginPassword.length < 6) {
+                        alert("Password must be at least 6 characters.");
+                        return;
+                      }
+                      setCreatingLogin(true);
+                      try {
+                        const res = await fetch("/api/admin/create-account", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            email: loginEmail.trim(),
+                            password: loginPassword,
+                            full_name: selectedVendor.contact_name || selectedVendor.business_name,
+                            phone: selectedVendor.phone || null,
+                            role: "vendor",
+                            vendor_id: selectedVendor.id,
+                          }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || "Failed to provision vendor login.");
+                        alert(`Vendor login created for "${selectedVendor.business_name}". They can sign in at /auth/login.`);
+                        setSelectedVendor({ ...selectedVendor, owner_user_id: data.userId });
+                        setLoginPassword("");
+                        loadVendors();
+                      } catch (err) {
+                        alert("Error creating vendor login: " + err.message);
+                      } finally {
+                        setCreatingLogin(false);
+                      }
+                    }}
+                    style={{ display: "flex", flexDirection: "column", gap: "8px" }}
+                  >
+                    <input
+                      type="email"
+                      required
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      placeholder="Vendor login email"
+                      style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "0.85rem" }}
+                    />
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      placeholder="Initial password (min 6 chars)"
+                      style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "0.85rem" }}
+                    />
+                    <Button type="submit" variant="outline" loading={creatingLogin}>
+                      + Provision Vendor Portal Login
+                    </Button>
+                  </form>
+                )}
+              </div>
 
               <div className={styles.modalActions} style={{ marginTop: "16px" }}>
                 <Button variant="primary" onClick={() => setSelectedVendor(null)}>

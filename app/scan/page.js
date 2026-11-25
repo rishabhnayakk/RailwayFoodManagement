@@ -11,7 +11,7 @@ function tokenFromQr(value) {
   if (!raw) return "";
   try {
     const parsed = new URL(raw);
-    const match = parsed.pathname.match(/\\/scan\\/([^/]+)/);
+    const match = parsed.pathname.match(/\/scan\/([^/]+)/);
     if (match) return decodeURIComponent(match[1]);
   } catch {
     // A QR may contain the raw package token rather than a URL.

@@ -59,7 +59,6 @@ export default function QrCodesPage() {
             category,
             price,
             description,
-            qr_token,
             status,
             created_at,
             vendors (
@@ -94,7 +93,10 @@ export default function QrCodesPage() {
   }
 
   useEffect(() => {
-    loadData();
+    const timer = setTimeout(() => {
+      loadData();
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   async function handleRegister(e) {

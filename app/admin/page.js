@@ -129,10 +129,11 @@ export default function AdminDashboard() {
             <div className={styles.kpiGrid}>
               <KpiCard icon="💬" label="Total Feedback"   value={stats?.total_feedback ?? 0}    />
               <KpiCard icon="⚠️" label="Total Complaints" value={stats?.total_complaints ?? 0}  />
-              <KpiCard icon="⏳" label="Pending"           value={stats?.pending_complaints ?? 0} />
+              <KpiCard icon="⏳" label="Active / Open"    value={stats?.active_complaints ?? 0} />
               <KpiCard icon="✅" label="Resolved"          value={stats?.resolved_complaints ?? 0} />
               <KpiCard icon="⭐" label="Avg. Rating"       value={stats?.avg_rating ? `${Number(stats.avg_rating).toFixed(1)}★` : "—"} />
               <KpiCard icon="🏪" label="Vendors"           value={stats?.total_vendors ?? 0}     />
+              <KpiCard icon="🔍" label="Inspectors"        value={stats?.total_inspectors ?? 0}  />
             </div>
           )}
         </div>
@@ -186,10 +187,11 @@ export default function AdminDashboard() {
               ) : (
                 <div className={styles.barSection}>
                   {[
-                    { label: "Pending",      count: stats.pending_complaints ?? 0,  color: "#b45309" },
-                    { label: "Under Review", count: stats.review_complaints ?? 0,   color: "#1d4ed8" },
-                    { label: "Resolved",     count: stats.resolved_complaints ?? 0, color: "#1a7a4a" },
-                    { label: "Rejected",     count: stats.rejected_complaints ?? 0, color: "#c0392b" },
+                    { label: "Pending Review",    count: stats.pending_complaints ?? 0, color: "#b45309" },
+                    { label: "Investigating",     count: (stats.assigned_complaints ?? 0) + (stats.in_progress_complaints ?? 0), color: "#1d4ed8" },
+                    { label: "Report Submitted",  count: stats.report_submitted_complaints ?? 0, color: "#0369a1" },
+                    { label: "Resolved",          count: stats.resolved_complaints ?? 0, color: "#1a7a4a" },
+                    { label: "Reopened",          count: stats.reopened_complaints ?? 0, color: "#c0392b" },
                   ].map(item => {
                     const total = stats.total_complaints || 1;
                     return (
