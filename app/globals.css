@@ -4,17 +4,17 @@
  */
 
 :root {
-  /* Brand palette */
-  --navy:        #0f2a52;
-  --navy-dark:   #09192e;
-  --navy-mid:    #163a6e;
+  /* Brand palette — Deep Railway Red + Crisp White + Light Grey */
+  --navy:        #8b1a1a;
+  --navy-dark:   #5c1010;
+  --navy-mid:    #a92323;
   --red:         #c0392b;
   --red-light:   #fdecea;
   --green:       #1a7a4a;
   --green-light: #e6f4ec;
   --amber:       #b45309;
   --amber-light: #fef3c7;
-  --blue-light:  #e8f0fb;
+  --blue-light:  #fdecea;
 
   /* Surfaces & typography */
   --bg:          #f4f6f9;

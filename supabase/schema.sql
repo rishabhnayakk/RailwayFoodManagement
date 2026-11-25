@@ -10,10 +10,12 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 2. ENUM TYPES
 DO $$ BEGIN
-    CREATE TYPE user_role AS ENUM ('admin', 'inspector', 'passenger');
+    CREATE TYPE user_role AS ENUM ('admin', 'inspector', 'vendor', 'passenger');
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
+
+ALTER TYPE public.user_role ADD VALUE IF NOT EXISTS 'vendor';
 
 DO $$ BEGIN
     CREATE TYPE complaint_status AS ENUM (
@@ -56,6 +58,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.vendors (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_user_id UUID UNIQUE REFERENCES public.profiles(id) ON DELETE SET NULL,
     business_name TEXT NOT NULL,
     license_number TEXT UNIQUE NOT NULL,
     contact_name TEXT,
@@ -66,6 +69,9 @@ CREATE TABLE IF NOT EXISTS public.vendors (
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+ALTER TABLE public.vendors
+    ADD COLUMN IF NOT EXISTS owner_user_id UUID UNIQUE REFERENCES public.profiles(id) ON DELETE SET NULL;
 
 -- ==============================================================================
 -- TABLE 3: food_packages
@@ -110,6 +116,10 @@ CREATE TABLE IF NOT EXISTS public.feedback (
     passenger_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
     passenger_name TEXT,
     rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    food_quality_rating INTEGER CHECK (food_quality_rating >= 1 AND food_quality_rating <= 5),
+    taste_rating INTEGER CHECK (taste_rating >= 1 AND taste_rating <= 5),
+    packaging_rating INTEGER CHECK (packaging_rating >= 1 AND packaging_rating <= 5),
+    hygiene_rating INTEGER CHECK (hygiene_rating >= 1 AND hygiene_rating <= 5),
     comment TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
@@ -255,6 +265,11 @@ CREATE POLICY "Admins can manage vendors"
     ON public.vendors FOR ALL
     USING (public.is_admin());
 
+DROP POLICY IF EXISTS "Vendors can view their own vendor record" ON public.vendors;
+CREATE POLICY "Vendors can view their own vendor record"
+    ON public.vendors FOR SELECT
+    USING (owner_user_id = auth.uid());
+
 -- FOOD PACKAGES POLICIES
 DROP POLICY IF EXISTS "Anyone can view packages" ON public.food_packages;
 CREATE POLICY "Anyone can view packages"
@@ -265,6 +280,12 @@ DROP POLICY IF EXISTS "Admins can manage food packages" ON public.food_packages;
 CREATE POLICY "Admins can manage food packages"
     ON public.food_packages FOR ALL
     USING (public.is_admin());
+
+DROP POLICY IF EXISTS "Vendors manage own food packages" ON public.food_packages;
+CREATE POLICY "Vendors manage own food packages"
+    ON public.food_packages FOR ALL
+    USING (EXISTS (SELECT 1 FROM public.vendors v WHERE v.id = vendor_id AND v.owner_user_id = auth.uid()))
+    WITH CHECK (EXISTS (SELECT 1 FROM public.vendors v WHERE v.id = vendor_id AND v.owner_user_id = auth.uid()));
 
 -- QR CODES POLICIES
 DROP POLICY IF EXISTS "Anyone can read active qr codes" ON public.qr_codes;
@@ -291,6 +312,15 @@ CREATE POLICY "Passengers view own feedback or admin all"
         public.is_admin() OR
         public.is_inspector()
     );
+
+DROP POLICY IF EXISTS "Vendors view feedback for own packages" ON public.feedback;
+CREATE POLICY "Vendors view feedback for own packages"
+    ON public.feedback FOR SELECT
+    USING (EXISTS (
+        SELECT 1 FROM public.food_packages p
+        JOIN public.vendors v ON v.id = p.vendor_id
+        WHERE p.id = package_id AND v.owner_user_id = auth.uid()
+    ));
 
 -- COMPLAINTS POLICIES
 DROP POLICY IF EXISTS "Passengers can file complaints" ON public.complaints;
@@ -368,37 +398,57 @@ CREATE POLICY "System can append audit logs"
     ON public.audit_logs FOR INSERT
     WITH CHECK (true);
 
+-- TABLE 10: complaint_assignments (Audit log of inspector assignments)
+CREATE TABLE IF NOT EXISTS public.complaint_assignments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    complaint_id UUID NOT NULL REFERENCES public.complaints(id) ON DELETE CASCADE,
+    inspector_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    assigned_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    remarks TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_complaint_assignments_complaint ON public.complaint_assignments(complaint_id);
+CREATE INDEX IF NOT EXISTS idx_complaint_assignments_inspector ON public.complaint_assignments(inspector_id);
+
+ALTER TABLE public.complaint_assignments ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Admins and assigned inspectors view assignments" ON public.complaint_assignments;
+CREATE POLICY "Admins and assigned inspectors view assignments"
+    ON public.complaint_assignments FOR SELECT
+    USING (public.is_admin() OR inspector_id = auth.uid());
+
+DROP POLICY IF EXISTS "Admins manage complaint assignments" ON public.complaint_assignments;
+CREATE POLICY "Admins manage complaint assignments"
+    ON public.complaint_assignments FOR ALL
+    USING (public.is_admin())
+    WITH CHECK (public.is_admin());
+
 -- ==============================================================================
 -- AUTOMATIC PROFILE CREATION TRIGGER
--- When a user registers via Supabase Auth, populate public.profiles.
+-- Public self-registration always assigns 'passenger'; privileged accounts are
+-- provisioned server-side by Admin via /api/admin/create-account.
 -- ==============================================================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
-DECLARE
-  v_role user_role := 'passenger';
 BEGIN
-  -- Check user_metadata for role ('admin' or 'inspector' can be assigned or created by admin)
-  IF (NEW.raw_user_meta_data->>'role') IN ('admin', 'inspector', 'passenger') THEN
-    v_role := (NEW.raw_user_meta_data->>'role')::user_role;
-  END IF;
-
   INSERT INTO public.profiles (id, email, full_name, phone, role)
   VALUES (
     NEW.id,
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'full_name', 'Railway Passenger'),
     NEW.raw_user_meta_data->>'phone',
-    v_role
+    'passenger'
   )
   ON CONFLICT (id) DO UPDATE
   SET
     email = EXCLUDED.email,
-    full_name = EXCLUDED.full_name,
+    full_name = COALESCE(NULLIF(EXCLUDED.full_name, 'Railway Passenger'), public.profiles.full_name),
     phone = COALESCE(EXCLUDED.phone, public.profiles.phone);
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created

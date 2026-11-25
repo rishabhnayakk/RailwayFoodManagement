@@ -41,8 +41,12 @@ export default function VerifiedPackageFeedbackPage({ params }) {
   // User session state
   const [userProfile, setUserProfile] = useState(null);
 
-  // Rating Form State
+  // Rating Form State (structured 1–5 star ratings)
   const [rating, setRating] = useState(5);
+  const [foodQualityRating, setFoodQualityRating] = useState(5);
+  const [tasteRating, setTasteRating] = useState(5);
+  const [packagingRating, setPackagingRating] = useState(5);
+  const [hygieneRating, setHygieneRating] = useState(5);
   const [comment, setComment] = useState("");
   const [passengerName, setPassengerName] = useState("");
   const [submittingRating, setSubmittingRating] = useState(false);
@@ -128,15 +132,29 @@ export default function VerifiedPackageFeedbackPage({ params }) {
     }
 
     try {
-      const { data, error: insertErr } = await supabase.from("feedback").insert([
+      const basePayload = {
+        package_id: packageData.id,
+        passenger_id: userProfile?.user?.id || null,
+        passenger_name: passengerName || "Anonymous Passenger",
+        rating: rating,
+        comment: comment || null,
+      };
+
+      let { error: insertErr } = await supabase.from("feedback").insert([
         {
-          package_id: packageData.id,
-          passenger_id: userProfile?.user?.id || null,
-          passenger_name: passengerName || "Anonymous Passenger",
-          rating: rating,
-          comment: comment || null,
+          ...basePayload,
+          food_quality_rating: foodQualityRating,
+          taste_rating: tasteRating,
+          packaging_rating: packagingRating,
+          hygiene_rating: hygieneRating,
         },
       ]);
+
+      // Fallback for older DB instances without the structured sub-rating columns
+      if (insertErr && /column .* does not exist|schema cache/i.test(insertErr.message || "")) {
+        const retry = await supabase.from("feedback").insert([basePayload]);
+        insertErr = retry.error;
+      }
 
       if (insertErr) throw insertErr;
 
@@ -365,12 +383,12 @@ export default function VerifiedPackageFeedbackPage({ params }) {
               </button>
             </div>
 
-            {/* Tab 1: Food Rating Form */}
+            {/* Tab 1: Structured Food Rating Form */}
             {activeTab === "rating" && (
               <form onSubmit={handleSubmitRating} className={styles.formCard}>
                 <div className={styles.ratingSection}>
                   <p className={styles.ratingLabel}>
-                    {RATING_DESCRIPTIONS[rating]}
+                    Overall Rating: {RATING_DESCRIPTIONS[rating]}
                   </p>
                   <div className={styles.starRow}>
                     {[1, 2, 3, 4, 5].map((s) => (
@@ -386,8 +404,44 @@ export default function VerifiedPackageFeedbackPage({ params }) {
                     ))}
                   </div>
                   <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                    Click a star to change your rating (1 to 5)
+                    Click a star to set your overall rating (1 to 5)
                   </span>
+                </div>
+
+                {/* Structured Dimension Ratings */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", padding: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--border)" }}>
+                  {[
+                    { label: "Food Quality", value: foodQualityRating, setter: setFoodQualityRating },
+                    { label: "Taste", value: tasteRating, setter: setTasteRating },
+                    { label: "Packaging", value: packagingRating, setter: setPackagingRating },
+                    { label: "Hygiene", value: hygieneRating, setter: setHygieneRating },
+                  ].map((dim) => (
+                    <div key={dim.label} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text)" }}>
+                        {dim.label} ({dim.value}/5)
+                      </span>
+                      <div style={{ display: "flex", gap: "4px" }}>
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => dim.setter(s)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              fontSize: "1.15rem",
+                              color: s <= dim.value ? "#f59e0b" : "#cbd5e1",
+                              padding: 0,
+                              lineHeight: 1,
+                            }}
+                            title={`${dim.label}: ${s} stars`}
+                          >
+                            ★
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
                 <Input

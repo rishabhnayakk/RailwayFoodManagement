@@ -25,9 +25,11 @@ import styles from "./AdminSidebar.module.css";
 const NAV_ICONS = {
   "/admin":            "🏠",
   "/admin/complaints": "⚠️",
+  "/admin/feedback":   "⭐",
   "/admin/vendors":    "🏪",
-  "/admin/qr-codes":  "📱",
+  "/admin/qr-codes":   "📱",
   "/admin/inspectors": "🔍",
+  "/admin/analytics":  "📊",
   "/admin/audit-logs": "📋",
 };
 
