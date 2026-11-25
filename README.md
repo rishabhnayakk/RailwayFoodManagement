@@ -87,7 +87,7 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 ## 6. Supabase Database, RLS & Storage Setup
 
 1. Open your **Supabase Dashboard** → **SQL Editor** → **New Query**.
-2. Run the contents of [`supabase/schema.sql`](supabase/schema.sql) (or [`supabase/migrations/20261125_complete_railguard.sql`](supabase/migrations/20261125_complete_railguard.sql) followed by the RLS policies in `supabase/schema.sql` if upgrading an existing database).
+2. Run the contents of [`supabase/schema.sql`](supabase/schema.sql).
 3. Confirm all 10 tables exist with RLS enabled:
    - `profiles`, `vendors`, `food_packages`, `qr_codes`, `feedback`, `complaints`, `inspection_reports`, `complaint_assignments`, `complaint_status_history`, `audit_logs`
 4. Confirm all 3 Storage buckets exist under **Storage**:
