@@ -70,6 +70,7 @@ export default function QrCodesPage() {
             ),
             qr_codes (
               id,
+              qr_token,
               is_active
             )
           `)
@@ -77,7 +78,13 @@ export default function QrCodesPage() {
         supabase.from("vendors").select("id, business_name, station_location").eq("status", "active"),
       ]);
 
-      if (pkgsRes.data) setPackages(pkgsRes.data);
+      if (pkgsRes.data) {
+        const normalized = pkgsRes.data.map((pkg) => {
+          const qrRecord = Array.isArray(pkg.qr_codes) ? pkg.qr_codes[0] : pkg.qr_codes;
+          return { ...pkg, qr_token: qrRecord?.qr_token || "", qr_codes: qrRecord || null };
+        });
+        setPackages(normalized);
+      }
       if (vendsRes.data) setVendors(vendsRes.data);
     } catch (err) {
       console.error("Error loading packages:", err);
@@ -119,7 +126,6 @@ export default function QrCodesPage() {
             category: formData.category || "Meal",
             description: formData.description.trim() || null,
             price: formData.price ? parseFloat(formData.price) : null,
-            qr_token: qr_token,
             status: "active",
           },
         ])
@@ -137,7 +143,7 @@ export default function QrCodesPage() {
         },
       ]);
 
-      if (qrErr) console.warn("Note: qr_codes table insert fallback:", qrErr.message);
+      if (qrErr) throw qrErr;
 
       // 3. Log to audit_logs
       await supabase.from("audit_logs").insert([
