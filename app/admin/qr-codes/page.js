@@ -216,18 +216,14 @@ export default function QrCodesPage() {
     if (!supabase) return;
 
     try {
-      if (qrRecord?.id) {
-        await supabase
-          .from("qr_codes")
-          .update({ is_active: newActive })
-          .eq("id", qrRecord.id);
-      } else {
-        // Fallback update on food_packages
-        await supabase
-          .from("food_packages")
-          .update({ status: newActive ? "active" : "inactive" })
-          .eq("id", pkg.id);
+      if (!qrRecord?.id) {
+        throw new Error("This package has no saved QR record. Please register it again.");
       }
+      const { error } = await supabase
+        .from("qr_codes")
+        .update({ is_active: newActive })
+        .eq("id", qrRecord.id);
+      if (error) throw error;
 
       alert(newActive ? "QR code reactivated." : "QR code revoked and deactivated.");
       loadData();
