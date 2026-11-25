@@ -51,7 +51,6 @@ export default function VerifiedPackageFeedbackPage({ params }) {
   const [issueType, setIssueType] = useState("foreign_object");
   const [severity, setSeverity] = useState("medium");
   const [description, setDescription] = useState("");
-  const [passengerContact, setPassengerContact] = useState("");
   const [pnrNumber, setPnrNumber] = useState("");
   const [trainNumber, setTrainNumber] = useState("");
   const [coachSeat, setCoachSeat] = useState("");
@@ -73,7 +72,6 @@ export default function VerifiedPackageFeedbackPage({ params }) {
         if (authData) {
           setUserProfile(authData);
           setPassengerName(authData.profile?.full_name || "");
-          setPassengerContact(authData.profile?.phone || authData.user?.email || "");
         }
 
         // Verify QR token with backend
@@ -194,15 +192,13 @@ export default function VerifiedPackageFeedbackPage({ params }) {
           {
             package_id: packageData.id,
             passenger_id: userProfile?.user?.id || null,
+            passenger_name: passengerName.trim(),
             issue_type: issueType,
             description: description,
             severity: severity,
             status: "submitted",
             image_url: uploadedImageUrl,
-            passenger_contact: passengerContact || null,
-            pnr_number: pnrNumber || null,
-            train_number: trainNumber || null,
-            coach_seat: coachSeat || null,
+            pnr_number: pnrNumber.trim(),
           },
         ])
         .select()
@@ -427,6 +423,22 @@ export default function VerifiedPackageFeedbackPage({ params }) {
                   </p>
                 </div>
 
+                <Input
+                  label="Customer Name"
+                  placeholder="Enter your full name"
+                  value={passengerName}
+                  onChange={(e) => setPassengerName(e.target.value)}
+                  required
+                />
+
+                <Input
+                  label="PNR Number"
+                  placeholder="Enter your 10-digit PNR"
+                  value={pnrNumber}
+                  onChange={(e) => setPnrNumber(e.target.value.split("").filter((char) => char >= "0" && char <= "9").join("").slice(0, 10))}
+                  required
+                />
+
                 <Select
                   label="Hygiene / Defect Category"
                   required
@@ -499,40 +511,7 @@ export default function VerifiedPackageFeedbackPage({ params }) {
                   )}
                 </div>
 
-                {/* Optional Journey Specifics */}
-                <div style={{ borderTop: "1px solid var(--border)", paddingTop: "14px", display: "flex", flexDirection: "column", gap: "12px" }}>
-                  <p style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text)" }}>
-                    Optional Journey Details (For on-board pantry investigations)
-                  </p>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                    <Input
-                      label="PNR Number"
-                      placeholder="e.g. 2451234567"
-                      value={pnrNumber}
-                      onChange={(e) => setPnrNumber(e.target.value)}
-                    />
-                    <Input
-                      label="Train Number / Name"
-                      placeholder="e.g. 12951 / Rajdhani Exp"
-                      value={trainNumber}
-                      onChange={(e) => setTrainNumber(e.target.value)}
-                    />
-                  </div>
-                  <Input
-                    label="Coach & Berth / Seat Number"
-                    placeholder="e.g. B3, Berth 42"
-                    value={coachSeat}
-                    onChange={(e) => setCoachSeat(e.target.value)}
-                  />
-                  <Input
-                    label="Passenger Contact (Mobile / Email)"
-                    placeholder="For inspector resolution contact"
-                    value={passengerContact}
-                    onChange={(e) => setPassengerContact(e.target.value)}
-                  />
-                </div>
-
-                <Button type="submit" variant="danger" full loading={submittingComplaint}>
+                <Button type="submit" variant="danger" full loading={submittingComplaint} disabled={!passengerName.trim() || pnrNumber.length !== 10}>
                   File Official Quality Complaint →
                 </Button>
               </form>
