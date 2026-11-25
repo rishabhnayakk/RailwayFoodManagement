@@ -91,3 +91,54 @@ input, select, textarea {
   animation: shimmer 1.5s infinite linear;
   border-radius: 4px;
 }
+
+
+/* TEMPORARY FULL-APP RED DIAGNOSTIC THEME */
+:root {
+  --navy: #991b1b;
+  --navy-dark: #450a0a;
+  --navy-mid: #b91c1c;
+  --red: #dc2626;
+  --red-light: #fee2e2;
+  --green: #b91c1c;
+  --green-light: #fee2e2;
+  --amber: #b91c1c;
+  --amber-light: #fee2e2;
+  --blue-light: #fee2e2;
+  --bg: #fff1f2;
+  --surface: #fffafa;
+  --border: #fecaca;
+  --text: #450a0a;
+  --text-muted: #7f1d1d;
+}
+body {
+  background: #fff1f2 !important;
+  color: #450a0a;
+}
+button, [role="button"], input[type="submit"], input[type="button"] {
+  background-color: #b91c1c !important;
+  border-color: #991b1b !important;
+  color: #fff !important;
+}
+a:not([class*="navLink"]):not([class*="backLink"]) {
+  text-decoration-color: #dc2626;
+}
+input, select, textarea {
+  border-color: #fca5a5 !important;
+}
+input:focus, select:focus, textarea:focus {
+  outline-color: #dc2626 !important;
+  border-color: #dc2626 !important;
+}
+/* Common panels/cards across admin, inspector, vendor and passenger pages */
+[class*="card"], [class*="Card"], [class*="panel"], [class*="Panel"],
+[class*="section"], [class*="Section"], [class*="tableWrap"] {
+  border-color: #fecaca !important;
+}
+/* Replace common blue/navy/green accent treatments with red for diagnosis */
+[class*="nav"], [class*="Nav"], [class*="header"], [class*="Header"],
+[class*="sidebar"], [class*="Sidebar"], [class*="hero"], [class*="Hero"] {
+  --navy: #991b1b;
+  --navy-dark: #450a0a;
+  --navy-mid: #b91c1c;
+}
