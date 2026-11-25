@@ -252,7 +252,7 @@
   background: #1a3d73;
 }
 
-/* Portals Directory Strip */
+/* Main Catalog Container */
 .main {
   flex: 1;
   max-width: 1040px;
@@ -262,67 +262,6 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
-}
-
-.portalsSection {
-  background: #ffffff;
-  border: 1px solid #d8dee6;
-  border-radius: 10px;
-  padding: 20px 22px;
-}
-
-.portalsHeader {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.portalsTitle {
-  font-size: 1rem;
-  font-weight: 700;
-  color: #0f2a52;
-}
-
-.portalsSub {
-  font-size: 0.84rem;
-  color: #4b5563;
-}
-
-.portalStrip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.portalTile {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 13px 14px;
-  border: 1px solid #d8dee6;
-  border-radius: 6px;
-  background: #f9fafb;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.portalTile:hover {
-  border-color: #0f2a52;
-  background: #f1f5f9;
-}
-
-.portalRole {
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: #111827;
-}
-
-.portalAction {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #15803d;
 }
 
 .footer {
@@ -349,18 +288,12 @@
   .optionsGrid {
     grid-template-columns: 1fr;
   }
-  .portalStrip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 560px) {
   .navSub,
   .navLink {
     display: none;
-  }
-  .portalStrip {
-    grid-template-columns: 1fr;
   }
   .optionCard {
     padding: 20px;

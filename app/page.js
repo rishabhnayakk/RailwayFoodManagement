@@ -80,37 +80,9 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Food Items & Portal Access */}
+      {/* Registered Food Items */}
       <main className={styles.main}>
         <HomeFoodCatalog />
-
-        <section className={styles.portalsSection}>
-          <div className={styles.portalsHeader}>
-            <h2 className={styles.portalsTitle}>Role-Based Portals</h2>
-            <p className={styles.portalsSub}>
-              Dedicated workspaces for passengers, catering vendors, field inspectors, and railway administrators.
-            </p>
-          </div>
-
-          <div className={styles.portalStrip}>
-            <Link href="/auth/login" className={styles.portalTile}>
-              <span className={styles.portalRole}>Passenger Portal</span>
-              <span className={styles.portalAction}>Sign In / Register →</span>
-            </Link>
-            <Link href="/vendor/login" className={styles.portalTile}>
-              <span className={styles.portalRole}>Vendor Portal</span>
-              <span className={styles.portalAction}>Upload Packages &amp; QR →</span>
-            </Link>
-            <Link href="/inspector/login" className={styles.portalTile}>
-              <span className={styles.portalRole}>Inspector Portal</span>
-              <span className={styles.portalAction}>Investigate Cases →</span>
-            </Link>
-            <Link href="/admin/login" className={styles.portalTile}>
-              <span className={styles.portalRole}>Admin Portal</span>
-              <span className={styles.portalAction}>Manage &amp; Verify →</span>
-            </Link>
-          </div>
-        </section>
       </main>
 
       <footer className={styles.footer}>
