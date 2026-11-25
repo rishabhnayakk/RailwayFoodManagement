@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS public.complaints (
     severity complaint_severity NOT NULL DEFAULT 'medium',
     status complaint_status NOT NULL DEFAULT 'submitted',
     image_url TEXT,
+    passenger_name TEXT,
     passenger_contact TEXT,
     pnr_number TEXT,
     train_number TEXT,
@@ -138,6 +139,9 @@ CREATE TABLE IF NOT EXISTS public.complaints (
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+-- Keep existing Supabase projects compatible with the QR complaint form.
+ALTER TABLE public.complaints ADD COLUMN IF NOT EXISTS passenger_name TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_complaints_package ON public.complaints(package_id);
 CREATE INDEX IF NOT EXISTS idx_complaints_passenger ON public.complaints(passenger_id);
