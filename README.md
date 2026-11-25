@@ -71,7 +71,7 @@ Every status change is recorded in `complaint_status_history` with complaint ID,
 
 ## 5. Environment Variables Setup
 
-Copy `.env.example` to `.env.local` in the project root:
+Create a `.env` file in the project root:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
@@ -124,8 +124,7 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 ```bash
 npm install
-cp .env.example .env.local
-# Add your Supabase credentials to .env.local
+# Create .env in the project root with your Supabase credentials
 npm run dev
 ```
 
