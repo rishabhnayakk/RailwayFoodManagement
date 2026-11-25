@@ -169,3 +169,11 @@
 .scanCorners i:nth-child(4) { bottom: -2px; right: -2px; border-width: 0 4px 4px 0; border-radius: 0 0 8px; }
 .cameraError { margin: 10px 0; padding: 10px 12px; border-radius: 8px; background: #fef2f2; color: #b91c1c; font-size: .8rem; line-height: 1.45; text-align: left; }
 .permissionNote { margin-top: 10px; color: var(--text-muted); font-size: .72rem; line-height: 1.45; }
+
+
+/* html5-qrcode camera viewport */
+.qrReader { width: 100%; min-height: 0; background: #0f172a; }
+.qrReader :global(video) { width: 100% !important; height: auto !important; max-height: 360px; object-fit: cover; border-radius: 10px; }
+.qrReader :global(canvas) { display: none; }
+.qrReader :global(#qr-shaded-region) { border-color: #34d399 !important; }
+.qrReader :global(img) { display: none; }
