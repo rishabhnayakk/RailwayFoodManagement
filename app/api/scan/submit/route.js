@@ -48,10 +48,7 @@ export async function POST(request) {
     const issueType = String(formData.get("issue_type") || "").trim();
     const severity = String(formData.get("severity") || "medium").trim();
     const description = String(formData.get("description") || "").trim();
-    const passengerContact = String(formData.get("passenger_contact") || "").trim();
-    const trainNumber = String(formData.get("train_number") || "").trim();
     const pnrNumber = String(formData.get("pnr_number") || "").trim();
-    const coachSeat = String(formData.get("coach_seat") || "").trim();
     const evidenceFile = formData.get("evidence");
 
     if (!token) {
@@ -64,14 +61,14 @@ export async function POST(request) {
       if (!passengerName) {
         return NextResponse.json({ error: "Passenger name is required to register a complaint." }, { status: 400 });
       }
+      if (!/^\d{10}$/.test(pnrNumber)) {
+        return NextResponse.json({ error: "A valid 10-digit PNR number is required to register a complaint." }, { status: 400 });
+      }
       if (!issueType || !description) {
         return NextResponse.json({ error: "Complaint category and description are required." }, { status: 400 });
       }
       if (!["low", "medium", "high", "critical"].includes(severity)) {
         return NextResponse.json({ error: "Invalid severity value." }, { status: 400 });
-      }
-      if (pnrNumber && !/^\d{10}$/.test(pnrNumber)) {
-        return NextResponse.json({ error: "PNR must be 10 digits if provided." }, { status: 400 });
       }
     }
 
@@ -183,10 +180,10 @@ export async function POST(request) {
         package_id: pkg.id,
         passenger_id: user?.id || null,
         passenger_name: passengerName,
-        passenger_contact: passengerContact || null,
-        train_number: trainNumber || null,
-        pnr_number: pnrNumber || null,
-        coach_seat: coachSeat || null,
+        passenger_contact: null,
+        train_number: null,
+        pnr_number: pnrNumber,
+        coach_seat: null,
         issue_type: issueType,
         severity,
         description,

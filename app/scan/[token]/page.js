@@ -55,10 +55,7 @@ export default function VerifiedPackageFeedbackPage({ params }) {
   const [severity, setSeverity] = useState("medium");
   const [description, setDescription] = useState("");
   const [passengerName, setPassengerName] = useState("");
-  const [passengerContact, setPassengerContact] = useState("");
-  const [trainNumber, setTrainNumber] = useState("");
   const [pnrNumber, setPnrNumber] = useState("");
-  const [coachSeat, setCoachSeat] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
 
@@ -76,7 +73,6 @@ export default function VerifiedPackageFeedbackPage({ params }) {
         if (authData) {
           setUserProfile(authData);
           setPassengerName(authData.profile?.full_name || "");
-          setPassengerContact(authData.profile?.phone || "");
         }
 
         const res = await fetch(`/api/qr/verify?token=${encodeURIComponent(token)}`);
@@ -123,12 +119,12 @@ export default function VerifiedPackageFeedbackPage({ params }) {
         toast.error("Please enter your name to register a complaint.");
         return;
       }
-      if (!description.trim()) {
-        toast.error("Please describe the issue in your complaint.");
+      if (!/^\d{10}$/.test(pnrNumber.trim())) {
+        toast.error("Please enter a valid 10-digit PNR number.");
         return;
       }
-      if (pnrNumber.trim() && pnrNumber.trim().length !== 10) {
-        toast.error("PNR number must be 10 digits if provided.");
+      if (!description.trim()) {
+        toast.error("Please describe the issue in your complaint.");
         return;
       }
     }
@@ -150,10 +146,7 @@ export default function VerifiedPackageFeedbackPage({ params }) {
         form.append("issue_type", issueType);
         form.append("severity", severity);
         form.append("description", description.trim());
-        form.append("passenger_contact", passengerContact.trim());
-        form.append("train_number", trainNumber.trim());
         form.append("pnr_number", pnrNumber.trim());
-        form.append("coach_seat", coachSeat.trim());
         if (imageFile) form.append("evidence", imageFile);
       }
 
@@ -513,36 +506,17 @@ export default function VerifiedPackageFeedbackPage({ params }) {
                     onChange={(e) => setDescription(e.target.value)}
                   />
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                    <Input
-                      label="Contact Details (Optional)"
-                      placeholder="Phone or email for updates"
-                      value={passengerContact}
-                      onChange={(e) => setPassengerContact(e.target.value)}
-                    />
-                    <Input
-                      label="Train Number (Optional)"
-                      placeholder="e.g. 12951"
-                      value={trainNumber}
-                      onChange={(e) => setTrainNumber(e.target.value)}
-                    />
-                    <Input
-                      label="PNR Number (Optional)"
-                      placeholder="10-digit PNR"
-                      value={pnrNumber}
-                      onChange={(e) =>
-                        setPnrNumber(
-                          e.target.value.split("").filter((c) => c >= "0" && c <= "9").join("").slice(0, 10)
-                        )
-                      }
-                    />
-                    <Input
-                      label="Coach / Seat Details (Optional)"
-                      placeholder="e.g. B2 / 42"
-                      value={coachSeat}
-                      onChange={(e) => setCoachSeat(e.target.value)}
-                    />
-                  </div>
+                  <Input
+                    label="PNR Number *"
+                    required
+                    placeholder="Enter 10-digit PNR number"
+                    value={pnrNumber}
+                    onChange={(e) =>
+                      setPnrNumber(
+                        e.target.value.split("").filter((c) => c >= "0" && c <= "9").join("").slice(0, 10)
+                      )
+                    }
+                  />
 
                   <div>
                     <label style={{ fontSize: "0.85rem", fontWeight: 600, display: "block", marginBottom: "6px" }}>
