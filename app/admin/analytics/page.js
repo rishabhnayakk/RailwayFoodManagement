@@ -1,9 +1,5 @@
 /* app/admin/analytics/page.js
- * Analytics & Audit Reports
- *
- * Visualizes quality performance using clean HTML/CSS (NO heavy chart libraries).
- * Calculates real figures from Supabase `complaints` and `feedback` tables.
- * NO mock data. NO Recharts.
+ * Admin quality analytics computed from Supabase `complaints` and `feedback`.
  */
 
 "use client";

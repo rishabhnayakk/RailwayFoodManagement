@@ -1,10 +1,5 @@
 /* app/admin/complaints/page.js
- * Complaint Management Portal
- *
- * Displays all passenger food quality complaints across railway catering.
- * Supports keyword search, 7-stage lifecycle status filtering, and severity filtering.
- * Connects to Supabase database. Shows clean empty state if no complaints exist.
- * NO fake data. NO external icon libraries.
+ * Admin complaint list with search, status, and severity filters.
  */
 
 "use client";

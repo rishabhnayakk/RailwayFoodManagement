@@ -1,10 +1,5 @@
 /* app/admin/audit-logs/page.js
- * Audit Logs Management
- *
- * Displays chronological system logs of administrative actions,
- * status changes, inspector assignments, and package registrations.
- * Connects to Supabase `audit_logs` table. Shows real empty state.
- * NO mock rows. NO external icon library.
+ * Admin audit log viewer backed by Supabase `audit_logs`.
  */
 
 "use client";

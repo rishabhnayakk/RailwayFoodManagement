@@ -1,15 +1,5 @@
 /* components/ui/Input.jsx
- *
- * Reusable form field components: Input, Textarea, Select.
- *
- * JAVASCRIPT CONCEPT: forwardRef
- *   React.forwardRef lets a parent component get a direct reference
- *   to the underlying <input> DOM element. This is needed for
- *   react-hook-form to manage the field value.
- *
- * HOW TO EXPLAIN:
- *   "I built one Input component that handles the label, error message,
- *    and styling. I reuse it on every form in the project."
+ * Reusable form field primitives (Input, Textarea, Select) with forwardRef support.
  */
 
 import { forwardRef } from "react";

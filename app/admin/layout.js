@@ -1,14 +1,4 @@
-// app/admin/layout.js
-// Next.js Route Group Layout for all /admin/* pages.
-//
-// WHAT THIS FILE DOES:
-// Every file inside /admin/ automatically gets wrapped by this layout.
-// So /admin, /admin/complaints, /admin/vendors, etc. all share the same
-// sidebar + header shell WITHOUT copy-pasting it into every page.
-//
-// This is one of Next.js App Router's most powerful features — nested layouts.
-//
-// DATABASE: No DB call here. Auth check happens in middleware / layouts.
+// Shared metadata wrapper for /admin/* routes. AdminLayout handles sidebar + auth checks.
 
 export const metadata = {
   title: "RailGuard Admin",

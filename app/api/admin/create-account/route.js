@@ -32,7 +32,7 @@ const ALLOWED_ROLES = ["inspector", "vendor"];
 
 export async function POST(request) {
   try {
-    // ── 1. Verify the requesting user is an Admin ──────────────────────────
+    // Verify requesting user is an active admin
     const serverSupabase = await createServerClient();
     const {
       data: { user },
@@ -53,7 +53,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "Forbidden — active admin access required." }, { status: 403 });
     }
 
-    // ── 2. Parse and validate the request body ─────────────────────────────
+    // Validate request payload
     const body = await request.json();
     const { email, password, full_name, phone, role, vendor_id } = body;
 
@@ -78,8 +78,7 @@ export async function POST(request) {
       );
     }
 
-    // ── 3. Use the service-role client to create the auth user ─────────────
-    //      This does NOT affect the Admin's own session.
+    // Create auth user via service role so admin session stays intact
     const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -115,8 +114,7 @@ export async function POST(request) {
 
     const newUserId = createdUser.user.id;
 
-    // ── 4. Upsert the profiles row with the correct role ───────────────────
-    //      The handle_new_user trigger might set role='passenger'; we override it.
+    // Override default passenger role from handle_new_user trigger
     const { error: profileUpsertErr } = await adminClient.from("profiles").upsert({
       id: newUserId,
       email: email.trim(),
@@ -131,7 +129,7 @@ export async function POST(request) {
       console.error("Profile upsert warning:", profileUpsertErr.message);
     }
 
-    // ── 4b. If creating a vendor login and vendor_id was provided, link it ──
+    // Link vendor profile to the vendors table when vendor_id is provided
     if (role === "vendor" && vendor_id) {
       const { error: linkErr } = await adminClient
         .from("vendors")
@@ -142,7 +140,7 @@ export async function POST(request) {
       }
     }
 
-    // ── 5. Write audit log ─────────────────────────────────────────────────
+    // Record account provisioning in audit_logs
     await serverSupabase.from("audit_logs").insert([
       {
         user_id: user.id,
