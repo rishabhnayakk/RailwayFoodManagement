@@ -82,7 +82,7 @@ export default function RegisterPage() {
           {error && <div className={styles.errorBanner}>{error}</div>}
           {success && (
             <div className={styles.successBanner}>
-              Account created. If email confirmation is enabled, check your inbox before signing in.
+              Account created successfully. Redirecting to your Passenger Portal…
             </div>
           )}
 
