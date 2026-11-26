@@ -25,8 +25,11 @@ export default function LandingPage() {
           <Link href="/track" className={styles.navLink}>
             Track Complaint
           </Link>
+          <Link href="/auth/register" className={styles.navLink}>
+            Register
+          </Link>
           <Link href="/auth/login" className={styles.navSignIn}>
-            Portal Sign In
+            Login
           </Link>
         </nav>
       </header>

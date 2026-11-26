@@ -34,7 +34,7 @@ export default function VendorLayout({ children, title = "Vendor Portal" }) {
       try {
         const authData = await getCurrentUserProfile();
         if (!authData?.user || authData.profile?.role !== "vendor") {
-          router.replace("/vendor/login");
+          router.replace("/auth/login");
           return;
         }
         if (active) {
@@ -42,7 +42,7 @@ export default function VendorLayout({ children, title = "Vendor Portal" }) {
           setAuthorized(true);
         }
       } catch {
-        router.replace("/vendor/login");
+        router.replace("/auth/login");
       } finally {
         if (active) setChecking(false);
       }
@@ -55,7 +55,7 @@ export default function VendorLayout({ children, title = "Vendor Portal" }) {
 
   async function handleSignOut() {
     await signOutUser();
-    router.replace("/vendor/login");
+    router.replace("/auth/login");
     router.refresh();
   }
 

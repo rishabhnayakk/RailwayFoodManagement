@@ -15,7 +15,7 @@ export default function AdminSidebar({ open, onClose }) {
 
   async function handleSignOut() {
     await signOutUser();
-    router.replace("/admin/login");
+    router.replace("/auth/login");
     router.refresh();
   }
 

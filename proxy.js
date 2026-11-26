@@ -6,9 +6,9 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 const PORTAL_RULES = [
-  { prefix: "/admin", loginPath: "/admin/login", role: "admin" },
-  { prefix: "/vendor", loginPath: "/vendor/login", role: "vendor" },
-  { prefix: "/inspector", loginPath: "/inspector/login", role: "inspector" },
+  { prefix: "/admin", loginPath: "/auth/login", role: "admin" },
+  { prefix: "/vendor", loginPath: "/auth/login", role: "vendor" },
+  { prefix: "/inspector", loginPath: "/auth/login", role: "inspector" },
   { prefix: "/passenger", loginPath: "/auth/login", role: "passenger" },
 ];
 

@@ -27,7 +27,7 @@ export default function VendorDashboard() {
       try {
         const account = await getCurrentUserProfile();
         if (!account?.profile || account.profile.role !== "vendor") {
-          router.replace("/vendor/login");
+          router.replace("/auth/login");
           return;
         }
 

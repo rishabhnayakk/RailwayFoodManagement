@@ -93,12 +93,6 @@ export default function LoginPage() {
               Create an account
             </Link>
           </p>
-
-          <div className={styles.roleLinks}>
-            <Link href="/vendor/login">Vendor Login</Link> ·{" "}
-            <Link href="/inspector/login">Inspector Login</Link> ·{" "}
-            <Link href="/admin/login">Admin Login</Link>
-          </div>
         </div>
       </div>
     </div>

@@ -34,12 +34,12 @@ export default function AdminLayout({ children, title = "Dashboard" }) {
       try {
         const authData = await getCurrentUserProfile();
         if (!authData?.user || authData.profile?.role !== "admin") {
-          router.replace("/admin/login");
+          router.replace("/auth/login");
           return;
         }
         if (active) setAuthorized(true);
       } catch {
-        router.replace("/admin/login");
+        router.replace("/auth/login");
       } finally {
         if (active) setChecking(false);
       }

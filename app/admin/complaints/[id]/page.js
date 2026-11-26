@@ -42,7 +42,7 @@ export default function AdminComplaintDetailPage({ params }) {
     setLoading(true);
     const authData = await getCurrentUserProfile().catch(() => null);
     if (!authData?.user) {
-      router.push("/admin/login");
+      router.push("/auth/login");
       return;
     }
     setAdminUser(authData);

@@ -122,7 +122,7 @@ export default function InspectorsPage() {
         throw new Error(result.error || "Failed to create inspector account.");
       }
 
-      toast.success(`Inspector "${formData.full_name}" registered. They can sign in at /inspector/login.`);
+      toast.success(`Inspector "${formData.full_name}" registered. They can sign in at /auth/login.`);
       setFormData({ full_name: "", email: "", phone: "", password: "" });
       setModalOpen(false);
       fetchInspectors();
@@ -188,7 +188,7 @@ export default function InspectorsPage() {
           <EmptyState
             icon="🔍"
             title="No quality inspectors found"
-            description="Create a Quality Inspector account so they can investigate assigned passenger complaints at /inspector/login."
+            description="Create a Quality Inspector account so they can investigate assigned passenger complaints at /auth/login."
             action={
               <Button variant="primary" onClick={() => setModalOpen(true)}>
                 + Create First Inspector Account

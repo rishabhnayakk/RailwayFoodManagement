@@ -34,7 +34,7 @@ export default function InspectorLayout({ children, title = "Inspector Portal" }
       try {
         const authData = await getCurrentUserProfile();
         if (!authData?.user || authData.profile?.role !== "inspector") {
-          router.replace("/inspector/login");
+          router.replace("/auth/login");
           return;
         }
         if (active) {
@@ -42,7 +42,7 @@ export default function InspectorLayout({ children, title = "Inspector Portal" }
           setAuthorized(true);
         }
       } catch {
-        router.replace("/inspector/login");
+        router.replace("/auth/login");
       } finally {
         if (active) setChecking(false);
       }
@@ -55,7 +55,7 @@ export default function InspectorLayout({ children, title = "Inspector Portal" }
 
   async function handleSignOut() {
     await signOutUser();
-    router.replace("/inspector/login");
+    router.replace("/auth/login");
     router.refresh();
   }
 

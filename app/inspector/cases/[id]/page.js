@@ -61,7 +61,7 @@ export default function InspectorCaseDetailPage({ params }) {
 
     const authData = await getCurrentUserProfile().catch(() => null);
     if (!authData?.user) {
-      router.push("/inspector/login");
+      router.push("/auth/login");
       return;
     }
     setInspector(authData);
