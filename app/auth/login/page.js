@@ -27,7 +27,8 @@ export default function LoginPage() {
       const userProfile = await getCurrentUserProfile();
       const role = userProfile?.profile?.role;
       if (!role) throw new Error("Account profile is missing. Contact RailGuard Administration.");
-      router.push(getPortalHomeForRole(role));
+      router.replace(getPortalHomeForRole(role));
+      router.refresh();
     } catch (err) {
       setError(err.message || "Failed to sign in. Please verify your credentials.");
     } finally {
@@ -41,17 +42,20 @@ export default function LoginPage() {
         <Link href="/" className={styles.backLink}>
           ← Back to Home
         </Link>
-        <div className={styles.brand}>RailGuard</div>
+        <Link href="/" className={styles.brand}>
+          <span className={styles.brandMark} aria-hidden="true">RG</span>
+          <span>RAILGUARD</span>
+        </Link>
       </div>
 
       <div className={styles.main}>
         <div className={styles.card}>
           <span className={`${styles.badgeHeader} ${styles.badgePassenger}`}>
-            Passenger Portal
+            Role-Based Portal Access
           </span>
           <h1 className={styles.title}>Sign In to RailGuard</h1>
           <p className={styles.subtitle}>
-            Sign in with your RailGuard credentials to access your portal.
+            Sign in with your RailGuard credentials. You will be routed automatically to your authorized portal.
           </p>
 
           {error && <div className={styles.errorBanner}>{error}</div>}
@@ -68,11 +72,16 @@ export default function LoginPage() {
             <Input
               label="Password"
               type="password"
-              placeholder="••••••••"
+              placeholder="Enter your password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            <div className={styles.forgotRow}>
+              <Link href="/auth/forgot-password" className={styles.forgotLink}>
+                Forgot Password?
+              </Link>
+            </div>
             <Button type="submit" variant="primary" full loading={loading}>
               Sign In
             </Button>

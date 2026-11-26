@@ -55,7 +55,8 @@ export default function VendorLayout({ children, title = "Vendor Portal" }) {
 
   async function handleSignOut() {
     await signOutUser();
-    router.push("/vendor/login");
+    router.replace("/vendor/login");
+    router.refresh();
   }
 
   if (checking || !authorized) {

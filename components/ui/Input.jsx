@@ -2,14 +2,18 @@
  * Reusable form field primitives (Input, Textarea, Select) with forwardRef support.
  */
 
-import { forwardRef } from "react";
+import { forwardRef, useState } from "react";
 import styles from "./Input.module.css";
 
 export const Input = forwardRef(function Input(
-  { label, error, hint, required, className = "", ...props },
+  { label, error, hint, required, className = "", type = "text", ...props },
   ref
 ) {
   const id = props.id ?? props.name;
+  const isPassword = type === "password";
+  const [showPassword, setShowPassword] = useState(false);
+  const resolvedType = isPassword && showPassword ? "text" : type;
+
   return (
     <div className={styles.group}>
       {label && (
@@ -18,12 +22,25 @@ export const Input = forwardRef(function Input(
           {required && <span className={styles.required}>*</span>}
         </label>
       )}
-      <input
-        ref={ref}
-        id={id}
-        className={`${styles.input} ${error ? styles.error : ""} ${className}`}
-        {...props}
-      />
+      <div className={isPassword ? styles.passwordWrap : undefined}>
+        <input
+          ref={ref}
+          id={id}
+          type={resolvedType}
+          className={`${styles.input} ${isPassword ? styles.inputWithToggle : ""} ${error ? styles.error : ""} ${className}`}
+          {...props}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            className={styles.toggleBtn}
+            onClick={() => setShowPassword((prev) => !prev)}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? "Hide" : "Show"}
+          </button>
+        )}
+      </div>
       {error && <p className={styles.error_text}>{error}</p>}
       {hint && !error && <p className={styles.hint}>{hint}</p>}
     </div>

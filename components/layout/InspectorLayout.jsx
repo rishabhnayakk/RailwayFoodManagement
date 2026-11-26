@@ -55,7 +55,8 @@ export default function InspectorLayout({ children, title = "Inspector Portal" }
 
   async function handleSignOut() {
     await signOutUser();
-    router.push("/inspector/login");
+    router.replace("/inspector/login");
+    router.refresh();
   }
 
   if (checking || !authorized) {

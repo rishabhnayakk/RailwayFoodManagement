@@ -46,7 +46,10 @@ export default function RegisterPage() {
       });
 
       setSuccess(true);
-      if (data?.session) router.push("/passenger");
+      if (data?.session) {
+        router.replace("/passenger");
+        router.refresh();
+      }
     } catch (err) {
       setError(err.message || "Registration failed. Please try again.");
     } finally {
@@ -60,7 +63,10 @@ export default function RegisterPage() {
         <Link href="/" className={styles.backLink}>
           ← Back to Home
         </Link>
-        <div className={styles.brand}>RailGuard</div>
+        <Link href="/" className={styles.brand}>
+          <span className={styles.brandMark} aria-hidden="true">RG</span>
+          <span>RAILGUARD</span>
+        </Link>
       </div>
 
       <div className={styles.main}>

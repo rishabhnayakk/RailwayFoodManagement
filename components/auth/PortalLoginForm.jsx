@@ -48,7 +48,8 @@ export default function PortalLoginForm({
         );
       }
 
-      router.push(redirectPath);
+      router.replace(redirectPath);
+      router.refresh();
     } catch (err) {
       setError(err.message || "Failed to sign in. Please verify your credentials.");
     } finally {
@@ -62,7 +63,10 @@ export default function PortalLoginForm({
         <Link href="/" className={styles.backLink}>
           ← Back to Home
         </Link>
-        <div className={styles.brand}>RailGuard</div>
+        <Link href="/" className={styles.brand}>
+          <span className={styles.brandMark} aria-hidden="true">RG</span>
+          <span>RAILGUARD</span>
+        </Link>
       </div>
 
       <div className={styles.main}>
@@ -85,11 +89,16 @@ export default function PortalLoginForm({
             <Input
               label="Password"
               type="password"
-              placeholder="••••••••"
+              placeholder="Enter your password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            <div className={styles.forgotRow}>
+              <Link href="/auth/forgot-password" className={styles.forgotLink}>
+                Forgot Password?
+              </Link>
+            </div>
             <Button type="submit" variant="primary" full loading={loading}>
               Sign In
             </Button>

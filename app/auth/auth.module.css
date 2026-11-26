@@ -30,11 +30,26 @@
 
 .brand {
   color: #ffffff;
-  font-weight: 700;
+  font-weight: 800;
   font-size: 0.95rem;
+  letter-spacing: 0.05em;
   display: flex;
   align-items: center;
   gap: 8px;
+  text-decoration: none;
+}
+
+.brandMark {
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  background: #15803d;
+  color: #ffffff;
+  font-size: 0.74rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .main {
@@ -92,6 +107,23 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.forgotRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -6px;
+}
+
+.forgotLink {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--navy);
+  text-decoration: none;
+}
+
+.forgotLink:hover {
+  text-decoration: underline;
 }
 
 .errorBanner {

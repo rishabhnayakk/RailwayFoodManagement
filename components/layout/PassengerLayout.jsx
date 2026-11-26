@@ -57,7 +57,8 @@ export default function PassengerLayout({ children }) {
 
   async function handleSignOut() {
     await signOutUser();
-    router.push("/auth/login");
+    router.replace("/auth/login");
+    router.refresh();
   }
 
   if (checking || !authorized) {
